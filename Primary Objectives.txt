@@ -1,0 +1,19 @@
+1) When the page loads, there is supposed to be an animation where the camera starts from above the clouds, goes through the clouds, and swoops down to the forest.
+
+2) We need to implement grass sprites (with performance!). Implement cel-shading and animated physics so that the grass looks like Breath of the Wild or Genshin Impact.
+
+3) Implement season selection. For Spring, the trees have cherry blossoms and a light green and flower petals. For Summer, we need a darker green. For Fall, we need fall foliage, animations of leaves falling. For Winter, we need the snow on the ground, a snowing animation, leaves on the trees should be covered with snow.
+
+4) None of these animations should interfere with the text or content on the screen.
+
+5) In light mode, we want the sun to appear in the sky.
+
+6) In dark mode, we want the sun to set, and then have the stars appear in the sky. The moon should appear and illuminate the forest. When the user switches from dark mode to light mode, the sun should rise and illuminate the sky. Ensure the transition speed is not too quick or slow.
+
+7) Right now, the water looks out of place. We should have a creek winding through the forest. The creek should be animated. The lake texture should be removed and replaced with the creek.
+
+8) Performance, web page, and animations should be mobile-responsive.
+
+9) Contact form should be secure, no data leaks or credential leaks.
+
+10) Text should be completely visible. Right now, it is blending with the background scenery.

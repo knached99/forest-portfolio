@@ -1,40 +1,129 @@
 /**
- * world.js — Three.js Forest Scene
+ * world.js — Three.js Forest Scene (Immersive Overhaul)
  * Forest Portfolio — Full cinematic experience
  */
 (function () {
     'use strict';
 
-    /* ────────────────────────────────────────────────────────
-       1. RENDERER & CAMERA
-    ──────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────
+       T005: WebGL Fallback
+    ───────────────────────────────────────────────────────── */
     const canvas = document.getElementById('three-canvas');
+    let renderer;
+    try {
+        renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    } catch (e) {
+        document.body.classList.add('no-webgl');
+        const bg = document.getElementById('no-webgl-bg');
+        if (bg) bg.style.display = 'block';
+        // Expose a no-op public API so ui.js does not throw
+        window.forestScene  = { toggleDayNight: function(){}, setRain: function(){}, get isNight(){ return false; }, get introDone(){ return true; } };
+        window.seasonManager = { setSeason: function(){}, onSeasonChange: function(){}, get currentSeason(){ return 'spring'; }, get isTransitioning(){ return false; } };
+        window.grassSystem   = { get tier(){ return 'LOW'; }, setWind: function(){} };
+        return;
+    }
+
+    /* ─────────────────────────────────────────────────────────
+       T007: Performance Tier Detection
+    ───────────────────────────────────────────────────────── */
+    const CPU  = navigator.hardwareConcurrency || 2;
+    const DPR  = window.devicePixelRatio || 1;
+    const TIER = (CPU >= 4 && DPR < 2) ? 'HIGH' : (CPU >= 2 && DPR < 3) ? 'MED' : 'LOW';
+
+    const SHADOW_SIZE   = TIER === 'HIGH' ? 2048 : TIER === 'MED' ? 1024 : 512;
+    const PIXEL_RATIO   = TIER === 'HIGH' ? Math.min(DPR, 2) : TIER === 'MED' ? Math.min(DPR, 1.5) : 1;
+    const GRASS_COUNT   = TIER === 'HIGH' ? 8000  : TIER === 'MED' ? 3000  : 1000;
+    const PART_MAX      = TIER === 'HIGH' ? 700   : TIER === 'MED' ? 350   : 150;
+
+    const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    /* Shared ground height function — keeps grass Y flush with terrain */
+    function groundHeightAt(x, z) {
+        return Math.sin(x * 0.07) * 1.8
+             + Math.cos(z * 0.05) * 1.4
+             + Math.sin(x * 0.18 + z * 0.12) * 0.6
+             + Math.sin(x * 0.4  + z * 0.35) * 0.2;
+    }
+
     const W = () => window.innerWidth;
     const H = () => window.innerHeight;
 
-    const renderer = new THREE.WebGLRenderer({
-        canvas,
-        antialias: true,
-        powerPreference: 'high-performance'
-    });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(PIXEL_RATIO);
     renderer.setSize(W(), H());
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.shadowMap.enabled = TIER !== 'LOW';
+    renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
+    renderer.toneMapping       = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
     try { renderer.outputEncoding = THREE.sRGBEncoding; } catch (e) {}
 
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(62, W() / H(), 0.1, 1200);
+    /* T053: Pre-allocated Color scratch objects — reused every frame to avoid GC pressure */
+    const _ca = new THREE.Color();
+    const _cb = new THREE.Color();
+    const _cc = new THREE.Color();
 
-    /* Start above clouds for cinematic descent */
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(62, W() / H(), 0.1, 1200);
     camera.position.set(0, 130, 40);
     camera.lookAt(0, 50, 0);
 
-    /* ────────────────────────────────────────────────────────
-       2. SEASON DETECTION
-    ──────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────
+       T008: Season Configurations (expanded)
+    ───────────────────────────────────────────────────────── */
+    const SEASONS = {
+        spring: {
+            fogColor: 0xc2dfc4, fogDensity: 0.012,
+            skyTop: 0x87ceeb,   skyBottom: 0xbde5be,
+            groundColor: 0x4a7c3f,
+            leafColors: [0x6abf69, 0x81c784, 0xf8bbd0, 0xfce4ec, 0xa5d6a7],
+            trunkColor: 0x4a3728,
+            sunColor: 0xfffde7,  ambientColor: 0xd4e8d4, ambientInt: 0.65,
+            sunInt: 1.6, hemiSky: 0x90cbe8, hemiGround: 0x4a7c3f,
+            particleColor: 0xf8bbd0, particleSize: 0.16,
+            grassColor: 0x6abf69, grassDensity: 1.0,
+            creekColor: 0x2e8bb0, creekFrozen: false,
+            accentCss: '#82c17d', badge: '🌸 Spring'
+        },
+        summer: {
+            fogColor: 0x8fc48a, fogDensity: 0.01,
+            skyTop: 0x1e90ff,   skyBottom: 0x72bb6e,
+            groundColor: 0x2e6b2a,
+            leafColors: [0x2e7d32, 0x388e3c, 0x43a047, 0x66bb6a, 0x81c784],
+            trunkColor: 0x4e3b2a,
+            sunColor: 0xfff9e6,  ambientColor: 0xc8e6c9, ambientInt: 0.7,
+            sunInt: 1.9, hemiSky: 0x1e90ff, hemiGround: 0x3a6b2f,
+            particleColor: 0xa8d5a2, particleSize: 0.0,
+            grassColor: 0x2e7d32, grassDensity: 1.0,
+            creekColor: 0x1a6e8c, creekFrozen: false,
+            accentCss: '#4db34a', badge: '☀️ Summer'
+        },
+        fall: {
+            fogColor: 0xc0845a, fogDensity: 0.018,
+            skyTop: 0xb07820,   skyBottom: 0xd4944a,
+            groundColor: 0x4a3018,
+            leafColors: [0xe67e22, 0xe74c3c, 0xf39c12, 0xd35400, 0xc0392b, 0xf1c40f],
+            trunkColor: 0x3e2410,
+            sunColor: 0xffe0b2,  ambientColor: 0xd4a060, ambientInt: 0.5,
+            sunInt: 1.3, hemiSky: 0xb07820, hemiGround: 0x4a3018,
+            particleColor: 0xe67e22, particleSize: 0.2,
+            grassColor: 0xe67e22, grassDensity: 0.8,
+            creekColor: 0x4a6e7a, creekFrozen: false,
+            accentCss: '#d4824a', badge: '🍁 Fall'
+        },
+        winter: {
+            fogColor: 0xcbd8e8, fogDensity: 0.022,
+            skyTop: 0x546e7a,   skyBottom: 0x90a4ae,
+            groundColor: 0xdce8f0,
+            leafColors: [0xb0bec5, 0x90a4ae, 0xcfd8dc, 0xe0e0e0, 0xffffff],
+            trunkColor: 0x5a4a3a,
+            sunColor: 0xe8f4fb,  ambientColor: 0xc5d8e8, ambientInt: 0.4,
+            sunInt: 1.0, hemiSky: 0x546e7a, hemiGround: 0x90a4ae,
+            particleColor: 0xffffff, particleSize: 0.22,
+            grassColor: 0x90a4ae, grassDensity: 0.5,
+            creekColor: 0x7a9dba, creekFrozen: true,
+            accentCss: '#7ab0cc', badge: '❄️ Winter'
+        }
+    };
+
     function detectSeason() {
         const m = new Date().getMonth();
         if (m >= 2 && m <= 4) return 'spring';
@@ -43,66 +132,19 @@
         return 'winter';
     }
 
-    const SEASON = detectSeason();
-    document.body.classList.add('season-' + SEASON);
+    let currentSeason = detectSeason();
+    let SC = SEASONS[currentSeason];
+    document.body.classList.add('season-' + currentSeason);
 
-    const SEASONS = {
-        spring: {
-            fogColor: 0xc2dfc4,  fogDensity: 0.012,
-            skyTop: 0x87ceeb,   skyBottom: 0xbde5be,
-            groundColor: 0x4a7c3f,
-            leafColors: [0x6abf69, 0x81c784, 0xf8bbd0, 0xfce4ec, 0xa5d6a7],
-            trunkColor: 0x4a3728,
-            sunColor: 0xfffde7,  ambientColor: 0xd4e8d4, ambientInt: 0.65,
-            sunInt: 1.6, hemiSky: 0x90cbe8, hemiGround: 0x4a7c3f,
-            badge: '🌸 Spring'
-        },
-        summer: {
-            fogColor: 0x8fc48a,  fogDensity: 0.01,
-            skyTop: 0x1e90ff,   skyBottom: 0x72bb6e,
-            groundColor: 0x2e6b2a,
-            leafColors: [0x2e7d32, 0x388e3c, 0x43a047, 0x66bb6a, 0x81c784],
-            trunkColor: 0x4e3b2a,
-            sunColor: 0xfff9e6,  ambientColor: 0xc8e6c9, ambientInt: 0.7,
-            sunInt: 1.9, hemiSky: 0x1e90ff, hemiGround: 0x3a6b2f,
-            badge: '☀️ Summer'
-        },
-        fall: {
-            fogColor: 0xc0845a,  fogDensity: 0.018,
-            skyTop: 0xb07820,   skyBottom: 0xd4944a,
-            groundColor: 0x4a3018,
-            leafColors: [0xe67e22, 0xe74c3c, 0xf39c12, 0xd35400, 0xc0392b, 0xf1c40f],
-            trunkColor: 0x3e2410,
-            sunColor: 0xffe0b2,  ambientColor: 0xd4a060, ambientInt: 0.5,
-            sunInt: 1.3, hemiSky: 0xb07820, hemiGround: 0x4a3018,
-            badge: '🍁 Fall'
-        },
-        winter: {
-            fogColor: 0xcbd8e8,  fogDensity: 0.022,
-            skyTop: 0x546e7a,   skyBottom: 0x90a4ae,
-            groundColor: 0xdce8f0,
-            leafColors: [0xb0bec5, 0x90a4ae, 0xcfd8dc, 0xe0e0e0, 0xffffff],
-            trunkColor: 0x5a4a3a,
-            sunColor: 0xe8f4fb,  ambientColor: 0xc5d8e8, ambientInt: 0.4,
-            sunInt: 1.0, hemiSky: 0x546e7a, hemiGround: 0x90a4ae,
-            badge: '❄️ Winter'
-        }
-    };
-
-    const SC = SEASONS[SEASON];
-
-    const seasonBadge = document.getElementById('season-badge');
-    if (seasonBadge) seasonBadge.textContent = SC.badge;
-
-    /* ────────────────────────────────────────────────────────
-       3. SCENE ATMOSPHERE
-    ──────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────
+       SCENE ATMOSPHERE
+    ───────────────────────────────────────────────────────── */
     scene.fog = new THREE.FogExp2(SC.fogColor, SC.fogDensity);
     renderer.setClearColor(SC.fogColor, 1);
 
-    /* ────────────────────────────────────────────────────────
-       4. LIGHTING
-    ──────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────
+       LIGHTING
+    ───────────────────────────────────────────────────────── */
     const ambientLight = new THREE.AmbientLight(SC.ambientColor, SC.ambientInt);
     scene.add(ambientLight);
 
@@ -111,29 +153,27 @@
 
     const sunLight = new THREE.DirectionalLight(SC.sunColor, SC.sunInt);
     sunLight.position.set(60, 100, 40);
-    sunLight.castShadow = true;
-    sunLight.shadow.mapSize.set(2048, 2048);
+    sunLight.castShadow = TIER !== 'LOW';
+    sunLight.shadow.mapSize.set(SHADOW_SIZE, SHADOW_SIZE);
     sunLight.shadow.camera.near = 1;
-    sunLight.shadow.camera.far = 600;
+    sunLight.shadow.camera.far  = 600;
     sunLight.shadow.camera.left = sunLight.shadow.camera.bottom = -120;
-    sunLight.shadow.camera.right = sunLight.shadow.camera.top = 120;
+    sunLight.shadow.camera.right = sunLight.shadow.camera.top   =  120;
     sunLight.shadow.bias = -0.0005;
     scene.add(sunLight);
 
-    const moonLight = new THREE.DirectionalLight(0x8aafd4, 0.9);
+    const moonLight = new THREE.DirectionalLight(0x8aafd4, 0);
     moonLight.position.set(-60, 90, -30);
-    moonLight.intensity = 0;
     scene.add(moonLight);
 
-    /* ────────────────────────────────────────────────────────
-       5. SKY DOME  (gradient shader)
-    ──────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────
+       SKY DOME
+    ───────────────────────────────────────────────────────── */
     const skyUniforms = {
         uTop:    { value: new THREE.Color(SC.skyTop) },
         uBottom: { value: new THREE.Color(SC.skyBottom) },
         uOffset: { value: 0.25 }
     };
-
     const sky = new THREE.Mesh(
         new THREE.SphereGeometry(600, 32, 32),
         new THREE.ShaderMaterial({
@@ -161,25 +201,131 @@
     );
     scene.add(sky);
 
-    /* Sun & Moon spheres */
+    /* Sun & Moon spheres — fog:false keeps them visible at sky distance */
     const sunMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(4, 20, 20),
-        new THREE.MeshBasicMaterial({ color: 0xfff5a0 })
+        new THREE.SphereGeometry(10, 24, 24),
+        new THREE.MeshBasicMaterial({ color: 0xfff5a0, fog: false })
     );
-    sunMesh.position.set(60, 120, -200);
     scene.add(sunMesh);
 
-    const moonMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(3, 20, 20),
-        new THREE.MeshBasicMaterial({ color: 0xddeeff })
+    /* Sun glow halo */
+    const sunGlowMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(18, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0xffee88, fog: false, transparent: true, opacity: 0.18, side: THREE.BackSide })
     );
-    moonMesh.position.set(-80, 110, -200);
+    scene.add(sunGlowMesh);
+
+    /* Crescent moon — shader discards the shadowed hemisphere */
+    const moonMat = new THREE.ShaderMaterial({
+        fog: false,
+        uniforms: {
+            /* uSunDir points from moon toward sun; angle controls crescent thickness */
+            uSunDir: { value: new THREE.Vector3(0.55, 0.25, 0.80).normalize() }
+        },
+        vertexShader: `
+            varying vec3 vNormal;
+            void main() {
+                vNormal = normalize(normalMatrix * normal);
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }`,
+        fragmentShader: `
+            uniform vec3 uSunDir;
+            varying vec3 vNormal;
+            void main() {
+                float lit = dot(vNormal, normalize(uSunDir));
+                if (lit < 0.0) discard;
+                float face = smoothstep(0.0, 0.18, lit);
+                vec3 col = mix(vec3(0.12, 0.14, 0.22), vec3(0.88, 0.93, 1.0), face);
+                gl_FragColor = vec4(col, 1.0);
+            }`
+    });
+    const moonMesh = new THREE.Mesh(new THREE.SphereGeometry(8, 24, 24), moonMat);
     moonMesh.visible = false;
     scene.add(moonMesh);
 
-    /* ────────────────────────────────────────────────────────
-       6. GROUND
-    ──────────────────────────────────────────────────────── */
+    /* Moon glow */
+    const moonGlowMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(14, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0x8aafd4, fog: false, transparent: true, opacity: 0.12, side: THREE.BackSide })
+    );
+    moonGlowMesh.visible = false;
+    scene.add(moonGlowMesh);
+
+    /* ─────────────────────────────────────────────────────────
+       T039: Star Field
+    ───────────────────────────────────────────────────────── */
+    /* Stars — upper hemisphere only, fog:false so fog doesn't hide them */
+    const STAR_COUNT = 2500;
+    const starPositions = new Float32Array(STAR_COUNT * 3);
+    for (let i = 0; i < STAR_COUNT; i++) {
+        const theta = Math.random() * Math.PI * 2;
+        /* acos(random 0→1) gives phi 0→PI/2 (upper hemisphere) */
+        const phi   = Math.acos(Math.random());
+        const r     = 480;
+        starPositions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+        starPositions[i * 3 + 1] = r * Math.cos(phi) + 20;  /* bias upward */
+        starPositions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+    const starMat = new THREE.PointsMaterial({
+        color: 0xffffff, size: 1.8, transparent: true, opacity: 0,
+        sizeAttenuation: true, fog: false
+    });
+    const starField = new THREE.Points(starGeo, starMat);
+    scene.add(starField);
+
+    /* ─────────────────────────────────────────────────────────
+       AURORA BOREALIS (Winter night)
+    ───────────────────────────────────────────────────────── */
+    const auroraUniforms = {
+        uTime:      { value: 0 },
+        uIntensity: { value: 0 }
+    };
+    const auroraGeo = new THREE.PlaneGeometry(800, 140, 30, 12);
+    const auroraMat = new THREE.ShaderMaterial({
+        uniforms: auroraUniforms,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        fog: false,
+        vertexShader: `
+            uniform float uTime;
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                vec3 p = position;
+                p.y += sin(uv.x * 5.0 + uTime * 0.25) * 10.0
+                     + sin(uv.x * 2.2 - uTime * 0.18) * 14.0;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+            }`,
+        fragmentShader: `
+            uniform float uTime;
+            uniform float uIntensity;
+            varying vec2  vUv;
+            void main() {
+                float wave  = sin(vUv.x * 7.0 + uTime * 0.5) * 0.08
+                            + sin(vUv.x * 2.8 - uTime * 0.35) * 0.12;
+                float band  = smoothstep(0.18 + wave, 0.42 + wave, vUv.y)
+                            * smoothstep(1.0,  0.52 + wave, vUv.y);
+                vec3 green  = vec3(0.0, 0.95, 0.45);
+                vec3 teal   = vec3(0.0, 0.75, 0.85);
+                vec3 violet = vec3(0.5, 0.05, 0.9);
+                float mx    = fract(vUv.x + sin(vUv.x * 3.0 + uTime * 0.2) * 0.25);
+                vec3  col   = mx < 0.5 ? mix(green, teal, mx * 2.0) : mix(teal, violet, (mx - 0.5) * 2.0);
+                float shimmer = 0.65 + sin(uTime * 1.6 + vUv.x * 10.0) * 0.35;
+                gl_FragColor  = vec4(col, band * 0.55 * uIntensity * shimmer);
+            }`
+    });
+    const auroraMesh = new THREE.Mesh(auroraGeo, auroraMat);
+    auroraMesh.position.set(0, 75, -220);
+    auroraMesh.rotation.x = -0.18;
+    auroraMesh.visible = false;
+    scene.add(auroraMesh);
+
+    /* ─────────────────────────────────────────────────────────
+       GROUND
+    ───────────────────────────────────────────────────────── */
     const gGeo = new THREE.PlaneGeometry(500, 500, 60, 60);
     const gPos = gGeo.attributes.position;
     for (let i = 0; i < gPos.count; i++) {
@@ -187,154 +333,222 @@
         const h = Math.sin(x * 0.07) * 1.8
                 + Math.cos(z * 0.05) * 1.4
                 + Math.sin(x * 0.18 + z * 0.12) * 0.6
-                + Math.sin(x * 0.4 + z * 0.35) * 0.2;
+                + Math.sin(x * 0.4  + z * 0.35) * 0.2;
         gPos.setY(i, h);
     }
     gGeo.computeVertexNormals();
 
-    const gColor = SEASON === 'winter' ? 0xdde8f0
-                 : SEASON === 'fall'   ? 0x4a3018
-                 : SC.groundColor;
-
     const ground = new THREE.Mesh(gGeo, new THREE.MeshStandardMaterial({
-        color: gColor, roughness: 0.96, metalness: 0
+        color: SC.groundColor, roughness: 0.96, metalness: 0
     }));
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -2.5;
     ground.receiveShadow = true;
     scene.add(ground);
 
-    /* ────────────────────────────────────────────────────────
-       7. TREES
-    ──────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────
+       TREES
+    ───────────────────────────────────────────────────────── */
     const trunkMat = new THREE.MeshStandardMaterial({ color: SC.trunkColor, roughness: 0.95 });
+    const leafMats = [];
 
     function makeTree(x, z, s, leafIdx) {
         const g = new THREE.Group();
-        g.position.set(x, -2.5, z);
-
-        // Trunk
-        const tH = (3.5 + Math.random() * 4) * s;
-        const trunk = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.14 * s, 0.28 * s, tH, 7),
-            trunkMat
-        );
+        g.position.set(x, -2.5 + groundHeightAt(x, z), z);
+        const tH    = (3.5 + Math.random() * 4) * s;
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.14 * s, 0.28 * s, tH, 7), trunkMat);
         trunk.position.y = tH / 2;
         trunk.castShadow = true;
         g.add(trunk);
-
-        // Canopy (stacked cones for layered NE-US look)
-        const lc = SC.leafColors[leafIdx % SC.leafColors.length];
+        const lc  = SC.leafColors[leafIdx % SC.leafColors.length];
         const lMat = new THREE.MeshStandardMaterial({ color: lc, roughness: 0.88 });
+        leafMats.push(lMat);
         const layers = 3 + Math.floor(Math.random() * 3);
         for (let i = 0; i < layers; i++) {
-            const r  = (2.2 - i * 0.25 + Math.random() * 0.5) * s;
-            const ch = (2.8 - i * 0.2  + Math.random() * 0.8) * s;
-            const cone = new THREE.Mesh(
-                new THREE.ConeGeometry(r, ch, 8 + Math.floor(Math.random() * 3)),
-                lMat.clone()
-            );
+            const r    = (2.2 - i * 0.25 + Math.random() * 0.5) * s;
+            const ch   = (2.8 - i * 0.2  + Math.random() * 0.8) * s;
+            const cone = new THREE.Mesh(new THREE.ConeGeometry(r, ch, 8 + Math.floor(Math.random() * 3)), lMat);
             cone.position.y = tH + i * ch * 0.6 + ch * 0.35;
             cone.rotation.y = Math.random() * Math.PI;
             cone.castShadow = true;
             g.add(cone);
         }
-
         g.rotation.y = Math.random() * Math.PI * 2;
         return g;
     }
 
     const treeGroup = new THREE.Group();
-
-    // Dense forest on sides, path down the middle
     for (let i = 0; i < 160; i++) {
-        const side   = (Math.random() > 0.5 ? 1 : -1);
+        const side   = Math.random() > 0.5 ? 1 : -1;
         const spread = 6 + Math.random() * 65;
-        const x      = side * spread;
-        const z      = (Math.random() - 0.5) * 280;
-        const s      = 0.65 + Math.random() * 0.9;
-        const ci     = Math.floor(Math.random() * SC.leafColors.length);
-        treeGroup.add(makeTree(x, z, s, ci));
+        treeGroup.add(makeTree(side * spread, (Math.random() - 0.5) * 280, 0.65 + Math.random() * 0.9, Math.floor(Math.random() * SC.leafColors.length)));
     }
-
-    // Some scattered trees on the path for realism
     for (let i = 0; i < 20; i++) {
-        const x = (Math.random() - 0.5) * 8;
-        const z = -50 - Math.random() * 200;
-        treeGroup.add(makeTree(x, z, 0.5 + Math.random() * 0.4, 0));
+        treeGroup.add(makeTree((Math.random() - 0.5) * 8, -50 - Math.random() * 200, 0.5 + Math.random() * 0.4, 0));
     }
-
     scene.add(treeGroup);
 
-    /* ────────────────────────────────────────────────────────
-       8. ROCKS & GROUND DETAILS
-    ──────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────
+       ROCKS
+    ───────────────────────────────────────────────────────── */
     const rockMat = new THREE.MeshStandardMaterial({ color: 0x6a6a6a, roughness: 0.95 });
     for (let i = 0; i < 40; i++) {
-        const x = (Math.random() - 0.5) * 100;
-        const z = (Math.random() - 0.5) * 240;
-        const s = 0.15 + Math.random() * 0.9;
+        const s    = 0.15 + Math.random() * 0.9;
         const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rockMat);
-        rock.position.set(x, -2.5 + s * 0.5, z);
+        rock.position.set((Math.random() - 0.5) * 100, -2.5 + s * 0.5, (Math.random() - 0.5) * 240);
         rock.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
-        rock.castShadow = true;
-        rock.receiveShadow = true;
+        rock.castShadow = rock.receiveShadow = true;
         scene.add(rock);
     }
 
-    /* ────────────────────────────────────────────────────────
-       9. WATER (Custom shader)
-    ──────────────────────────────────────────────────────── */
-    const waterUniforms = {
-        uTime:  { value: 0 },
-        uColor: { value: new THREE.Color(SEASON === 'winter' ? 0x7a9dba : 0x1e6b8c) }
+    /* ─────────────────────────────────────────────────────────
+       T043–T047: Creek (replaces flat water lake)
+    ───────────────────────────────────────────────────────── */
+    /* Creek spans from far horizon ahead (-z) through the scene to camera start */
+    const CREEK_Y = -0.8;  /* above ground level so terrain bumps don't block it */
+    const creekControlPoints = [
+        new THREE.Vector3(-10, CREEK_Y, -320),
+        new THREE.Vector3(-16, CREEK_Y, -250),
+        new THREE.Vector3(-8,  CREEK_Y, -180),
+        new THREE.Vector3(-14, CREEK_Y, -120),
+        new THREE.Vector3(-9,  CREEK_Y, -70),
+        new THREE.Vector3(-13, CREEK_Y, -20),
+        new THREE.Vector3(-7,  CREEK_Y,  20),
+        new THREE.Vector3(-11, CREEK_Y,  55),
+        new THREE.Vector3(-6,  CREEK_Y,  80),
+    ];
+    const creekCurve   = new THREE.CatmullRomCurve3(creekControlPoints);
+    const creekSamples = creekCurve.getPoints(120);
+    const creekWidth   = 4.5;
+
+    function buildCreekGeometry(samples, width) {
+        const verts = [], uvs = [], indices = [];
+        const up = new THREE.Vector3(0, 1, 0);
+        for (let i = 0; i < samples.length; i++) {
+            const t   = i / (samples.length - 1);
+            const dir = i < samples.length - 1
+                ? new THREE.Vector3().subVectors(samples[i + 1], samples[i]).normalize()
+                : new THREE.Vector3().subVectors(samples[i], samples[i - 1]).normalize();
+            const right = new THREE.Vector3().crossVectors(dir, up).normalize();
+            const L = samples[i].clone().addScaledVector(right, -width / 2);
+            const R = samples[i].clone().addScaledVector(right,  width / 2);
+            verts.push(L.x, L.y, L.z, R.x, R.y, R.z);
+            uvs.push(0, t, 1, t);
+            if (i < samples.length - 1) {
+                const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+                indices.push(a, b, c, b, d, c);
+            }
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+        geo.setAttribute('uv',       new THREE.BufferAttribute(new Float32Array(uvs),   2));
+        geo.setIndex(indices);
+        geo.computeVertexNormals();
+        return geo;
+    }
+
+    const creekUniforms = {
+        uTime:      { value: 0 },
+        uFlowSpeed: { value: 0.14 },
+        uColor:     { value: new THREE.Color(SC.creekColor) }
     };
 
-    const water = new THREE.Mesh(
-        new THREE.PlaneGeometry(28, 24, 24, 24),
-        new THREE.ShaderMaterial({
-            uniforms: waterUniforms,
-            transparent: true,
-            side: THREE.DoubleSide,
-            vertexShader: `
-                uniform float uTime;
-                varying vec2  vUv;
-                void main() {
-                    vUv = uv;
-                    vec3 p = position;
-                    p.z += sin(p.x * 0.6 + uTime * 1.2) * 0.12
-                         + cos(p.y * 0.4 + uTime * 0.9) * 0.08;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(p,1.0);
-                }`,
-            fragmentShader: `
-                uniform float uTime;
-                uniform vec3  uColor;
-                varying vec2  vUv;
-                void main() {
-                    vec2 uv = vUv * 10.0;
-                    float c1 = sin(uv.x * 2.0 + uTime * 0.6) * 0.5 + 0.5;
-                    float c2 = cos(uv.y * 1.5 + uTime * 0.4) * 0.5 + 0.5;
-                    vec3  col = uColor + (c1 * c2) * 0.18;
-                    float edge = smoothstep(0.0, 0.1, vUv.x)
-                               * smoothstep(0.0, 0.1, vUv.y)
-                               * smoothstep(0.0, 0.1, 1.0 - vUv.x)
-                               * smoothstep(0.0, 0.1, 1.0 - vUv.y);
-                    gl_FragColor = vec4(col, 0.72 * edge);
-                }`
-        })
-    );
-    water.rotation.x = -Math.PI / 2;
-    water.position.set(10, -2.0, -60);
-    scene.add(water);
+    const creekMat = new THREE.ShaderMaterial({
+        uniforms: creekUniforms,
+        transparent: true,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+        vertexShader: `
+            uniform float uTime;
+            varying vec2  vUv;
+            void main() {
+                vUv = uv;
+                vec3 p = position;
+                /* Slow, gentle surface undulation */
+                p.y += sin(uv.x * 5.0  + uTime * 0.38) * 0.045
+                     + cos(uv.y * 3.5  + uTime * 0.28) * 0.032
+                     + sin(uv.x * 10.0 - uTime * 0.52) * 0.014;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+            }`,
+        fragmentShader: `
+            uniform float uTime;
+            uniform float uFlowSpeed;
+            uniform vec3  uColor;
+            varying vec2  vUv;
 
-    /* ────────────────────────────────────────────────────────
-       10. CLOUDS
-    ──────────────────────────────────────────────────────── */
+            float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+            void main() {
+                float flow = vUv.y * 8.0 - uTime * uFlowSpeed;
+
+                /* Scrolling flow lines — soft streaks along the current */
+                float f1 = pow(max(sin(vUv.x * 16.0 + flow * 1.2),       0.0), 5.0) * 0.50;
+                float f2 = pow(max(cos(vUv.x * 10.0 - flow * 0.8 + 1.1), 0.0), 5.0) * 0.30;
+                float flowLines = f1 + f2;
+
+                /* Caustic shimmer — slow dancing light patches */
+                vec2 cp = vec2(vUv.x * 4.0, flow * 0.30);
+                float c1 = sin(cp.x * 5.2 + uTime * 0.18) * sin(cp.y * 4.8 + uTime * 0.14);
+                float c2 = cos(cp.x * 7.1 - uTime * 0.12) * cos(cp.y * 6.3 + uTime * 0.20);
+                float caustic = pow(max((c1 + c2) * 0.5 + 0.5, 0.0), 3.5) * 0.45;
+
+                /* Sparkles — travel continuously with the current, smooth fade-in/out */
+                float sparkFlow  = vUv.y * 5.0 - uTime * 0.10;   /* slow scroll */
+                float sparkGen   = floor(uTime * 1.2);            /* new batch every ~0.8 s */
+                vec2  sp         = vec2(floor(vUv.x * 22.0), floor(sparkFlow));
+                float sparkRaw   = step(0.965, hash(sp + sparkGen));
+                /* Smooth crossfade between batches instead of a hard cut */
+                float phase      = fract(uTime * 1.2);
+                float sparkFade  = smoothstep(0.0, 0.35, phase) * smoothstep(1.0, 0.65, phase);
+                float spark      = sparkRaw * sparkFade;
+
+                /* Edge foam — frothy white at banks */
+                float edgeL = 1.0 - smoothstep(0.0, 0.14, vUv.x);
+                float edgeR = 1.0 - smoothstep(0.0, 0.14, 1.0 - vUv.x);
+                float foam  = max(edgeL, edgeR);
+                float foamAnim = 0.55 + sin(flow * 1.4 + vUv.x * 6.0) * 0.45;
+                foam = pow(foam, 1.8) * foamAnim;
+
+                /* Depth: darker / more saturated toward center */
+                float depth = smoothstep(0.0, 0.35, vUv.x) * smoothstep(0.0, 0.35, 1.0 - vUv.x);
+                vec3 deepCol    = uColor * 0.6;
+                vec3 shallowCol = uColor * 1.2;
+                vec3 waterCol   = mix(shallowCol, deepCol, depth);
+
+                vec3 col = waterCol
+                         + flowLines * 0.28
+                         + caustic   * 0.25
+                         + spark     * 1.80
+                         + foam      * vec3(0.85, 0.92, 1.0);
+
+                float alpha = 0.82 * smoothstep(0.0, 0.06, vUv.x)
+                                   * smoothstep(0.0, 0.06, 1.0 - vUv.x);
+
+                gl_FragColor = vec4(col, alpha);
+            }`
+    });
+
+    const creekGeo  = buildCreekGeometry(creekSamples, creekWidth);
+    const creekMesh = new THREE.Mesh(creekGeo, creekMat);
+    scene.add(creekMesh);
+
+    /* Ice overlay (Winter) */
+    const iceGeo = buildCreekGeometry(creekSamples, creekWidth * 1.5);
+    const iceMat = new THREE.MeshStandardMaterial({ color: 0xd0eeff, transparent: true, opacity: 0.62, roughness: 0.3, metalness: 0.1 });
+    const iceMesh = new THREE.Mesh(iceGeo, iceMat);
+    iceMesh.position.y = 0.02;
+    iceMesh.visible = SC.creekFrozen;
+    scene.add(iceMesh);
+
+    /* ─────────────────────────────────────────────────────────
+       CLOUDS
+    ───────────────────────────────────────────────────────── */
     function makeCloud(x, y, z, s) {
-        const g = new THREE.Group();
+        const g  = new THREE.Group();
         const cm = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.88, roughness: 1 });
-        const puffs = 5 + Math.floor(Math.random() * 5);
-        for (let i = 0; i < puffs; i++) {
+        for (let i = 0; i < 5 + Math.floor(Math.random() * 5); i++) {
             const r = (1.4 + Math.random() * 2.0) * s;
             const m = new THREE.Mesh(new THREE.SphereGeometry(r, 7, 5), cm.clone());
             m.position.set((Math.random() - 0.5) * 8 * s, (Math.random() - 0.3) * 2 * s, (Math.random() - 0.5) * 5 * s);
@@ -343,70 +557,202 @@
         g.position.set(x, y, z);
         return g;
     }
-
     const cloudGroup = new THREE.Group();
-    // High clouds for intro descent
     for (let i = 0; i < 22; i++) {
-        cloudGroup.add(makeCloud(
-            (Math.random() - 0.5) * 250,
-            55 + Math.random() * 40,
-            (Math.random() - 0.5) * 250,
-            1.0 + Math.random() * 1.6
-        ));
+        cloudGroup.add(makeCloud((Math.random() - 0.5) * 250, 55 + Math.random() * 40, (Math.random() - 0.5) * 250, 1.0 + Math.random() * 1.6));
     }
-    // Lower atmospheric clouds
     for (let i = 0; i < 12; i++) {
-        cloudGroup.add(makeCloud(
-            (Math.random() - 0.5) * 180,
-            22 + Math.random() * 14,
-            -80 - Math.random() * 180,
-            0.7 + Math.random() * 0.9
-        ));
+        cloudGroup.add(makeCloud((Math.random() - 0.5) * 180, 22 + Math.random() * 14, -80 - Math.random() * 180, 0.7 + Math.random() * 0.9));
     }
     scene.add(cloudGroup);
 
-    /* ────────────────────────────────────────────────────────
-       11. SEASONAL PARTICLES (leaves / petals / snow)
-    ──────────────────────────────────────────────────────── */
-    const PART_COUNT = 700;
-    const pPos = new Float32Array(PART_COUNT * 3);
-    const pVel = [];
-
-    const particleColors = {
-        spring: 0xf8bbd0, summer: 0xa8d5a2,
-        fall:   0xe67e22, winter: 0xffffff
+    /* ─────────────────────────────────────────────────────────
+       T033–T038: Cel-Shaded Grass System (InstancedMesh)
+    ───────────────────────────────────────────────────────── */
+    const grassUniforms = {
+        uTime:          { value: 0 },
+        uWindStrength:  { value: 0.35 },
+        uWindDirection: { value: new THREE.Vector2(1.0, 0.3) },
+        uColor:         { value: new THREE.Color(SC.grassColor) },
+        uLightDir:      { value: new THREE.Vector3(0.6, 1.0, 0.4).normalize() }
     };
 
-    for (let i = 0; i < PART_COUNT; i++) {
+    /* Creek-zone exclusion — keeps grass out of the stream */
+    function isInCreekZone(x, z) {
+        for (let i = 0; i < creekSamples.length; i += 2) {
+            const cp = creekSamples[i];
+            const dx = x - cp.x, dz = z - cp.z;
+            if (dx * dx + dz * dz < 144) return true; /* 12-unit exclusion radius */
+        }
+        return false;
+    }
+
+    const grassMaterial = new THREE.ShaderMaterial({
+        uniforms: grassUniforms,
+        side: THREE.DoubleSide,
+        vertexShader: `
+            uniform float     uTime;
+            uniform float     uWindStrength;
+            uniform vec2      uWindDirection;
+            attribute vec3    instanceOffset;
+            attribute float   instancePhase;
+            attribute float   instanceScale;
+            varying   float   vHeight;
+
+            void main() {
+                vHeight = uv.y;
+
+                /* Taper blade: wide at base, pointed at tip */
+                float taper = 1.0 - uv.y * 0.78;
+                vec3 blade  = position;
+                blade.x    *= taper * instanceScale;
+                blade.y    *= instanceScale;
+
+                /* Random base tilt using instancePhase as a secondary seed */
+                float tiltAmt = sin(instancePhase * 2.618) * 0.28;
+                blade.x += tiltAmt * (1.0 - uv.y * 0.5);
+
+                /* Quadratic wind sway — stronger at tip */
+                float sw2  = uv.y * uv.y;
+                float wave = (sin(uTime * 1.6  + instancePhase) * 0.7
+                            + sin(uTime * 2.8  + instancePhase * 1.5) * 0.3)
+                           * uWindStrength * sw2;
+                blade.x += wave * uWindDirection.x;
+                blade.z += wave * uWindDirection.y;
+
+                vec3 worldPos = blade + instanceOffset;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(worldPos, 1.0);
+            }`,
+        fragmentShader: `
+            uniform vec3  uColor;
+            varying float vHeight;
+
+            void main() {
+                float h = pow(vHeight, 0.65);
+
+                /* 3-band height-based cel shading — BOTW/Genshin style */
+                float celBand = h > 0.65 ? 1.0 : h > 0.38 ? 0.62 : 0.22;
+
+                vec3 rootCol = uColor * 0.35;
+                vec3 midCol  = uColor * 0.80;
+                vec3 tipCol  = uColor * 1.12;
+                vec3 col = h < 0.4
+                    ? mix(rootCol, midCol, h / 0.4)
+                    : mix(midCol,  tipCol, (h - 0.4) / 0.6);
+
+                col *= celBand;
+                gl_FragColor = vec4(col, 1.0);
+            }`
+    });
+
+    /* Outline: backface-inflated version for toon silhouette */
+    const grassOutlineMat = new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        vertexShader: `
+            uniform float     uTime;
+            uniform float     uWindStrength;
+            uniform vec2      uWindDirection;
+            attribute vec3    instanceOffset;
+            attribute float   instancePhase;
+            attribute float   instanceScale;
+            void main() {
+                float taper  = 1.0 - uv.y * 0.78;
+                vec3  blade  = position;
+                blade.x     *= taper * (instanceScale * 1.10);
+                blade.y     *= instanceScale * 1.10;
+                blade.x     += sin(instancePhase * 2.618) * 0.28 * (1.0 - uv.y * 0.5);
+                float sw2    = uv.y * uv.y;
+                float wave   = (sin(uTime * 1.6  + instancePhase) * 0.7
+                              + sin(uTime * 2.8  + instancePhase * 1.5) * 0.3)
+                             * uWindStrength * sw2;
+                blade.x     += wave * uWindDirection.x;
+                blade.z     += wave * uWindDirection.y;
+                gl_Position  = projectionMatrix * modelViewMatrix * vec4(blade + instanceOffset, 1.0);
+            }`,
+        fragmentShader: `void main() { gl_FragColor = vec4(0.0, 0.0, 0.0, 0.85); }`,
+        uniforms: {
+            uTime:          grassUniforms.uTime,
+            uWindStrength:  grassUniforms.uWindStrength,
+            uWindDirection: grassUniforms.uWindDirection
+        }
+    });
+
+    /* Wider, taller blade with 5 height segments for smoother curve */
+    const bladeMasterGeo = new THREE.PlaneGeometry(0.22, 0.82, 1, 5);
+
+    /* Per-instance data — cluster approach: several blades near each other */
+    const offsets = new Float32Array(GRASS_COUNT * 3);
+    const phases  = new Float32Array(GRASS_COUNT);
+    const scales  = new Float32Array(GRASS_COUNT);
+
+    const BLADES_PER_CLUSTER = 5;
+    let placed = 0, retries = 0;
+    while (placed < GRASS_COUNT) {
+        const cx = (Math.random() - 0.5) * 120;
+        const cz = (Math.random() - 0.5) * 240 - 40;
+        if (isInCreekZone(cx, cz) && ++retries < GRASS_COUNT * 4) continue;
+        retries = 0;
+
+        for (let b = 0; b < BLADES_PER_CLUSTER && placed < GRASS_COUNT; b++) {
+            const gx = cx + (Math.random() - 0.5) * 0.55;
+            const gz = cz + (Math.random() - 0.5) * 0.55;
+            offsets[placed * 3]     = gx;
+            offsets[placed * 3 + 1] = -2.5 + groundHeightAt(gx, gz);
+            offsets[placed * 3 + 2] = gz;
+            phases[placed] = Math.random() * Math.PI * 2;
+            scales[placed] = 0.75 + Math.random() * 0.65;
+            placed++;
+        }
+    }
+
+    /* InstancedBufferGeometry: per-instance attributes advance once per instance */
+    function makeGrassInstanceGeo() {
+        const ig = new THREE.InstancedBufferGeometry();
+        ig.index = bladeMasterGeo.index;
+        ig.setAttribute('position', bladeMasterGeo.getAttribute('position'));
+        ig.setAttribute('normal',   bladeMasterGeo.getAttribute('normal'));
+        ig.setAttribute('uv',       bladeMasterGeo.getAttribute('uv'));
+        ig.setAttribute('instanceOffset', new THREE.InstancedBufferAttribute(offsets, 3));
+        ig.setAttribute('instancePhase',  new THREE.InstancedBufferAttribute(phases,  1));
+        ig.setAttribute('instanceScale',  new THREE.InstancedBufferAttribute(scales,  1));
+        ig.instanceCount = GRASS_COUNT;
+        return ig;
+    }
+
+    const grassMesh    = new THREE.Mesh(makeGrassInstanceGeo(), grassMaterial);
+    const grassOutline = new THREE.Mesh(makeGrassInstanceGeo(), grassOutlineMat);
+    grassMesh.frustumCulled = grassOutline.frustumCulled = false;
+    scene.add(grassMesh);
+    scene.add(grassOutline);
+
+    /* ─────────────────────────────────────────────────────────
+       SEASONAL PARTICLES
+    ───────────────────────────────────────────────────────── */
+    const PART_COUNT = SC.particleSize > 0 ? PART_MAX : 0;
+    const pPos = new Float32Array(PART_MAX * 3);
+    const pVel = [];
+    for (let i = 0; i < PART_MAX; i++) {
         pPos[i * 3]     = (Math.random() - 0.5) * 80;
         pPos[i * 3 + 1] = Math.random() * 25 + 2;
         pPos[i * 3 + 2] = (Math.random() - 0.5) * 80;
-        pVel.push({
-            vx: (Math.random() - 0.5) * 0.025,
-            vy: -(0.018 + Math.random() * 0.04),
-            vz: (Math.random() - 0.5) * 0.018,
-            wb: Math.random() * Math.PI * 2,
-            ws: 0.015 + Math.random() * 0.03
-        });
+        pVel.push({ vx: (Math.random() - 0.5) * 0.025, vy: -(0.018 + Math.random() * 0.04), vz: (Math.random() - 0.5) * 0.018, wb: Math.random() * Math.PI * 2, ws: 0.015 + Math.random() * 0.03 });
     }
-
     const partGeo = new THREE.BufferGeometry();
     partGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-
     const particlesMat = new THREE.PointsMaterial({
-        color: particleColors[SEASON],
-        size: SEASON === 'winter' ? 0.22 : 0.16,
+        color: SC.particleColor,
+        size:  SC.particleSize || 0.16,
         transparent: true,
-        opacity: 0.82,
+        opacity: SC.particleSize > 0 ? 0.82 : 0,
         sizeAttenuation: true
     });
     const particles = new THREE.Points(partGeo, particlesMat);
     scene.add(particles);
 
-    /* ────────────────────────────────────────────────────────
-       12. RAIN PARTICLES
-    ──────────────────────────────────────────────────────── */
-    const RAIN_COUNT = 2500;
+    /* ─────────────────────────────────────────────────────────
+       RAIN
+    ───────────────────────────────────────────────────────── */
+    const RAIN_COUNT = TIER === 'LOW' ? 800 : 2500;
     const rPos = new Float32Array(RAIN_COUNT * 3);
     for (let i = 0; i < RAIN_COUNT; i++) {
         rPos[i * 3]     = (Math.random() - 0.5) * 80;
@@ -415,59 +761,189 @@
     }
     const rainGeo = new THREE.BufferGeometry();
     rainGeo.setAttribute('position', new THREE.BufferAttribute(rPos, 3));
-    const rainMat = new THREE.PointsMaterial({
-        color: 0x99ccee, size: 0.08, transparent: true, opacity: 0, sizeAttenuation: true
-    });
-    const rain = new THREE.Points(rainGeo, rainMat);
+    const rainMat  = new THREE.PointsMaterial({ color: 0x99ccee, size: 0.08, transparent: true, opacity: 0, sizeAttenuation: true });
+    const rain     = new THREE.Points(rainGeo, rainMat);
     scene.add(rain);
 
-    /* ────────────────────────────────────────────────────────
-       13. FIREFLIES
-    ──────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────
+       FIREFLIES
+    ───────────────────────────────────────────────────────── */
     const FF_COUNT = 70;
-    const ffPos  = new Float32Array(FF_COUNT * 3);
+    const ffPos = new Float32Array(FF_COUNT * 3);
     const ffData = [];
     for (let i = 0; i < FF_COUNT; i++) {
         ffPos[i * 3]     = (Math.random() - 0.5) * 60;
         ffPos[i * 3 + 1] = 0.4 + Math.random() * 7;
         ffPos[i * 3 + 2] = (Math.random() - 0.5) * 100;
-        ffData.push({
-            bx: ffPos[i * 3], by: ffPos[i * 3 + 1], bz: ffPos[i * 3 + 2],
-            ph: Math.random() * Math.PI * 2,
-            sp: 0.25 + Math.random() * 0.55,
-            r:  0.8 + Math.random() * 2.2,
-            bp: Math.random() * Math.PI * 2
-        });
+        ffData.push({ bx: ffPos[i*3], by: ffPos[i*3+1], bz: ffPos[i*3+2], ph: Math.random() * Math.PI * 2, sp: 0.25 + Math.random() * 0.55, r: 0.8 + Math.random() * 2.2, bp: Math.random() * Math.PI * 2 });
     }
     const ffGeo = new THREE.BufferGeometry();
     ffGeo.setAttribute('position', new THREE.BufferAttribute(ffPos, 3));
-    const ffMat = new THREE.PointsMaterial({
-        color: 0x88ff44, size: 0.45, transparent: true, opacity: 0, sizeAttenuation: true
-    });
+    const ffMat    = new THREE.PointsMaterial({ color: 0x88ff44, size: 0.45, transparent: true, opacity: 0, sizeAttenuation: true });
     const fireflies = new THREE.Points(ffGeo, ffMat);
     scene.add(fireflies);
 
-    /* ────────────────────────────────────────────────────────
-       14. STATE
-    ──────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────
+       STATE
+    ───────────────────────────────────────────────────────── */
     let time          = 0;
-    let introProgress = 0;        // 0→1
     let introDone     = false;
     let scrollY       = 0;
     let scrollMax     = 1;
-    let nightLerp     = 0;        // 0=day, 1=night
+    let nightLerp     = 0;
     let nightTarget   = 0;
     let isNight       = false;
+    let nightTransitioning = false;
+    let arcOffset     = 0;
+    let camX = 0, camY = 4, camZ = 30;
 
     const NIGHT = {
         ambientColor: 0x0a1020, ambientInt: 0.12,
-        skyTop: 0x020812, skyBottom: 0x0a1018,
+        skyTop: 0x020812,  skyBottom: 0x0a1018,
         fogColor: 0x060810, sunInt: 0, moonInt: 0.85
     };
 
-    /* ────────────────────────────────────────────────────────
-       15. LOADING & INTRO ANIMATION
-    ──────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────
+       T009: Season Manager
+    ───────────────────────────────────────────────────────── */
+    let _seasonTransitioning = false;
+    const _seasonListeners   = [];
+
+    function _applySeasonInstant(name) {
+        const ns = SEASONS[name];
+        ambientLight.color.set(ns.ambientColor);
+        ambientLight.intensity = ns.ambientInt;
+        sunLight.color.set(ns.sunColor);
+        sunLight.intensity     = ns.sunInt * (1 - nightLerp);
+        hemisphereLight.color.set(ns.hemiSky);
+        hemisphereLight.groundColor.set(ns.hemiGround);
+        skyUniforms.uTop.value.set(ns.skyTop);
+        skyUniforms.uBottom.value.set(ns.skyBottom);
+        scene.fog.color.set(ns.fogColor);
+        scene.fog.density = ns.fogDensity;
+        renderer.setClearColor(ns.fogColor, 1);
+        ground.material.color.set(ns.groundColor);
+        grassUniforms.uColor.value.set(ns.grassColor);
+        creekUniforms.uColor.value.set(ns.creekColor);
+        iceMesh.visible = ns.creekFrozen;
+        leafMats.forEach((m, idx) => { m.color.set(ns.leafColors[idx % ns.leafColors.length]); });
+        trunkMat.color.set(ns.trunkColor);
+        particlesMat.color.set(ns.particleColor);
+        particlesMat.size    = ns.particleSize || 0.16;
+        particlesMat.opacity = ns.particleSize > 0 ? 0.82 : 0;
+        document.body.classList.remove('season-spring', 'season-summer', 'season-fall', 'season-winter');
+        document.body.classList.add('season-' + name);
+        document.documentElement.style.setProperty('--accent', ns.accentCss);
+        const badge = document.getElementById('season-badge');
+        if (badge) badge.textContent = ns.badge;
+    }
+
+    const seasonManager = {
+        get currentSeason()    { return currentSeason; },
+        get isTransitioning()  { return _seasonTransitioning; },
+        onSeasonChange(cb)     { _seasonListeners.push(cb); },
+        setSeason(name) {
+            if (!SEASONS[name] || name === currentSeason || _seasonTransitioning) return;
+            if (REDUCED_MOTION) {
+                currentSeason = name;
+                SC = SEASONS[name];
+                _applySeasonInstant(name);
+                _seasonListeners.forEach(cb => cb(name));
+                return;
+            }
+            _seasonTransitioning = true;
+            const ns = SEASONS[name];
+
+            if (typeof gsap === 'undefined') {
+                currentSeason = name;
+                SC = ns;
+                _applySeasonInstant(name);
+                _seasonTransitioning = false;
+                _seasonListeners.forEach(cb => cb(name));
+                return;
+            }
+
+            /* Fade particles out */
+            gsap.to(particlesMat, { opacity: 0, duration: 0.3, onComplete: () => {
+                particlesMat.color.set(ns.particleColor);
+                particlesMat.size = ns.particleSize || 0.16;
+                /* Reset particle positions */
+                for (let i = 0; i < PART_MAX; i++) {
+                    pPos[i * 3]     = camera.position.x + (Math.random() - 0.5) * 60;
+                    pPos[i * 3 + 1] = camera.position.y + 18 + Math.random() * 8;
+                    pPos[i * 3 + 2] = camera.position.z + (Math.random() - 0.5) * 60;
+                }
+                partGeo.attributes.position.needsUpdate = true;
+                if (ns.particleSize > 0) gsap.to(particlesMat, { opacity: 0.82, duration: 0.3 });
+            }});
+
+            /* Tween all colors */
+            const tl = gsap.timeline({ duration: 1.5, ease: 'power2.inOut', onComplete: () => {
+                currentSeason = name;
+                SC = ns;
+                iceMesh.visible = ns.creekFrozen;
+                _seasonTransitioning = false;
+                _seasonListeners.forEach(cb => cb(name));
+                document.body.classList.remove('season-spring','season-summer','season-fall','season-winter');
+                document.body.classList.add('season-' + name);
+                document.documentElement.style.setProperty('--accent', ns.accentCss);
+                const badge = document.getElementById('season-badge');
+                if (badge) badge.textContent = ns.badge;
+            }});
+
+            tl.to(scene.fog.color,                  { r: new THREE.Color(ns.fogColor).r,    g: new THREE.Color(ns.fogColor).g,    b: new THREE.Color(ns.fogColor).b },    0);
+            tl.to(skyUniforms.uTop.value,            { r: new THREE.Color(ns.skyTop).r,      g: new THREE.Color(ns.skyTop).g,      b: new THREE.Color(ns.skyTop).b },      0);
+            tl.to(skyUniforms.uBottom.value,         { r: new THREE.Color(ns.skyBottom).r,   g: new THREE.Color(ns.skyBottom).g,   b: new THREE.Color(ns.skyBottom).b },   0);
+            tl.to(ambientLight.color,                { r: new THREE.Color(ns.ambientColor).r,g: new THREE.Color(ns.ambientColor).g,b: new THREE.Color(ns.ambientColor).b }, 0);
+            tl.to(ambientLight,                      { intensity: ns.ambientInt * (1 - nightLerp) }, 0);
+            tl.to(sunLight.color,                    { r: new THREE.Color(ns.sunColor).r,    g: new THREE.Color(ns.sunColor).g,    b: new THREE.Color(ns.sunColor).b },    0);
+            tl.to(ground.material.color,             { r: new THREE.Color(ns.groundColor).r, g: new THREE.Color(ns.groundColor).g, b: new THREE.Color(ns.groundColor).b }, 0);
+            tl.to(grassUniforms.uColor.value,        { r: new THREE.Color(ns.grassColor).r,  g: new THREE.Color(ns.grassColor).g,  b: new THREE.Color(ns.grassColor).b },  0);
+            tl.to(creekUniforms.uColor.value,        { r: new THREE.Color(ns.creekColor).r,  g: new THREE.Color(ns.creekColor).g,  b: new THREE.Color(ns.creekColor).b },  0);
+            leafMats.forEach(m => { tl.to(m.color, { r: new THREE.Color(ns.leafColors[0]).r, g: new THREE.Color(ns.leafColors[0]).g, b: new THREE.Color(ns.leafColors[0]).b }, 0); });
+        }
+    };
+    window.seasonManager = seasonManager;
+
+    /* ─────────────────────────────────────────────────────────
+       T010: Day / Night Cycle (with system pref on load)
+    ───────────────────────────────────────────────────────── */
+    const LERP_SPEED = REDUCED_MOTION ? 0.12 : 0.018;
+
+    function applySystemDarkMode() {
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            isNight = true;
+            nightTarget = 1;
+            nightLerp   = 1;
+            document.body.classList.add('night-mode');
+            const dayIcon   = document.querySelector('.day-icon');
+            const nightIcon = document.querySelector('.night-icon');
+            if (dayIcon)   dayIcon.classList.add('hidden');
+            if (nightIcon) nightIcon.classList.remove('hidden');
+            const btn = document.getElementById('day-night-btn');
+            if (btn) btn.setAttribute('title', 'Switch to Day');
+        }
+    }
+
+    function toggleDayNight() {
+        if (Math.abs(nightLerp - nightTarget) > 0.05) return; /* T048: debounce */
+        isNight     = !isNight;
+        nightTarget = isNight ? 1 : 0;
+        nightTransitioning = true;
+        document.body.classList.toggle('night-mode', isNight);
+        /* Animate arc clockwise (−π) so sun/moon visibly swap positions */
+        const _arc = { v: arcOffset };
+        if (typeof gsap !== 'undefined') {
+            gsap.to(_arc, { v: arcOffset - Math.PI, duration: 1.6, ease: 'power2.inOut',
+                onUpdate: function () { arcOffset = _arc.v; } });
+        } else {
+            arcOffset -= Math.PI;
+        }
+    }
+
+    /* ─────────────────────────────────────────────────────────
+       LOADING & INTRO ANIMATION (T023–T026)
+    ───────────────────────────────────────────────────────── */
     const progressEl = document.getElementById('loading-progress');
     let loadVal = 0;
     const loadInterval = setInterval(() => {
@@ -483,22 +959,21 @@
 
     function doReveal() {
         const ls = document.getElementById('loading-screen');
-        if (ls) {
-            ls.classList.add('fade-out');
-            setTimeout(() => { ls.style.display = 'none'; }, 900);
-        }
+        if (ls) { ls.classList.add('fade-out'); setTimeout(() => { ls.style.display = 'none'; }, 900); }
 
-        // Fade in HUD after a beat
+        applySystemDarkMode();
+
         setTimeout(() => {
-            const nav = document.getElementById('main-nav');
-            const cs  = document.getElementById('control-strip');
-            const eb  = document.getElementById('env-badge-wrap');
-            if (nav) nav.style.opacity = '1';
-            if (cs)  cs.style.opacity  = '1';
-            if (eb)  eb.style.opacity  = '1';
+            ['main-nav', 'control-strip'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.opacity = '1';
+            });
+            const eb = document.getElementById('env-badge-wrap');
+            if (eb) eb.style.opacity = '1';
+            const ss = document.getElementById('season-selector');
+            if (ss) ss.style.opacity = '1';
         }, 3200);
 
-        // Animate hero content
         setTimeout(() => {
             const hc = document.getElementById('hero-content');
             if (hc) hc.style.opacity = '1';
@@ -510,180 +985,166 @@
     }
 
     function startIntro() {
-        if (typeof gsap === 'undefined') {
-            // Fallback – skip straight to final position
-            camera.position.set(0, 4, 30);
+        /* T025: prefers-reduced-motion — skip tween */
+        if (REDUCED_MOTION || typeof gsap === 'undefined') {
+            camera.position.set(0, 3.5, 30);
             camera.lookAt(0, 1, 10);
+            camX = 0; camY = 3.5; camZ = 30;
             introDone = true;
             return;
         }
+
+        /* T024: cloud pass-through effect */
+        const cloudMats = [];
+        cloudGroup.children.forEach(c => c.children.forEach(m => { if (m.material) cloudMats.push(m.material); }));
 
         gsap.to(camera.position, {
             x: 0, y: 3.5, z: 30,
             duration: 5.5,
             ease: 'power3.inOut',
             onUpdate: () => {
-                const p = Math.min((5.5 - gsap.getProperty(camera, 'y') / 100), 1);
-                introProgress = p;
-                const lx = THREE.MathUtils.lerp(0, 0, p);
-                const ly = THREE.MathUtils.lerp(60, 1, p);
-                const lz = THREE.MathUtils.lerp(0, 10, p);
-                camera.lookAt(lx, ly, lz);
+                const py = camera.position.y;
+                /* Cloud pass-through: boost opacity when inside cloud layer */
+                const inCloud = py > 48 && py < 95;
+                cloudMats.forEach(m => { m.opacity = inCloud ? 0.97 : 0.88; });
+                if (inCloud) renderer.setClearColor(0xe8f0ec, 1);
+                else {
+                    const fc = new THREE.Color().lerpColors(new THREE.Color(SC.fogColor), new THREE.Color(NIGHT.fogColor), nightLerp);
+                    renderer.setClearColor(fc, 1);
+                }
+                /* Lerp look-at from high point down */
+                const p = Math.max(0, Math.min(1, 1 - (py - 3.5) / (130 - 3.5)));
+                camera.lookAt(0, THREE.MathUtils.lerp(60, 1, p), THREE.MathUtils.lerp(0, 10, p));
             },
             onComplete: () => {
                 introDone = true;
+                camX = 0; camY = 3.5; camZ = 30;
+                cloudMats.forEach(m => { m.opacity = 0.88; });
             }
         });
     }
 
-    /* ────────────────────────────────────────────────────────
-       16. SCROLL
-    ──────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────
+       SCROLL
+    ───────────────────────────────────────────────────────── */
     window.addEventListener('scroll', () => {
         scrollY   = window.scrollY;
         scrollMax = Math.max(document.body.scrollHeight - window.innerHeight, 1);
     }, { passive: true });
 
-    /* ────────────────────────────────────────────────────────
-       17. INTERSECTION OBSERVER — section reveals
-    ──────────────────────────────────────────────────────── */
-    const panels = document.querySelectorAll('.glass-panel');
-    const io = new IntersectionObserver((entries) => {
-        entries.forEach(e => {
-            if (e.isIntersecting) e.target.classList.add('visible');
-        });
-    }, { threshold: 0.18 });
+    /* ─────────────────────────────────────────────────────────
+       INTERSECTION OBSERVERS
+    ───────────────────────────────────────────────────────── */
+    const panels    = document.querySelectorAll('.glass-panel');
+    const io        = new IntersectionObserver(entries => { entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); }); }, { threshold: 0.18 });
     panels.forEach(p => io.observe(p));
 
-    // Skill bars
     const skillBars = document.querySelectorAll('.skill-bar');
-    const sio = new IntersectionObserver((entries) => {
-        entries.forEach(e => {
-            if (e.isIntersecting) {
-                const w = e.target.dataset.w || 0;
-                e.target.style.width = w + '%';
-                sio.unobserve(e.target);
-            }
-        });
+    const sio = new IntersectionObserver(entries => {
+        entries.forEach(e => { if (e.isIntersecting) { e.target.style.width = (e.target.dataset.w || 0) + '%'; sio.unobserve(e.target); } });
     }, { threshold: 0.4 });
     skillBars.forEach(b => sio.observe(b));
 
-    /* ────────────────────────────────────────────────────────
-       18. DAY / NIGHT TOGGLE (exposed via window.forestScene)
-    ──────────────────────────────────────────────────────── */
-    function toggleDayNight() {
-        isNight     = !isNight;
-        nightTarget = isNight ? 1 : 0;
-        document.body.classList.toggle('night-mode', isNight);
-    }
-
-    /* ────────────────────────────────────────────────────────
-       19. ANIMATION LOOP
-    ──────────────────────────────────────────────────────── */
-    let camX = 0, camY = 4, camZ = 30;
-
+    /* ─────────────────────────────────────────────────────────
+       ANIMATION LOOP
+    ───────────────────────────────────────────────────────── */
     function animate() {
         requestAnimationFrame(animate);
         time += 0.016;
 
-        /* — Scroll-driven camera —————————————————————— */
+        /* — Scroll-driven camera — */
         if (introDone) {
-            const t  = scrollY / scrollMax;      // 0→1
-            const tz = 30 - t * 200;             // approach deep forest
+            const t  = scrollY / scrollMax;
+            const tz = 30 - t * 200;
             const ty = 3.5 + Math.sin(t * Math.PI) * 4;
             const tx = Math.sin(t * Math.PI * 1.8) * 3;
-
             camX += (tx - camX) * 0.04;
             camY += (ty - camY) * 0.04;
             camZ += (tz - camZ) * 0.04;
-
             camera.position.set(camX, camY, camZ);
             camera.lookAt(camX * 0.15, 1.2, camZ - 18);
         }
 
-        /* — Day / Night lerp ─────────────────────────── */
-        nightLerp += (nightTarget - nightLerp) * 0.018;
+        /* — Day / Night lerp — */
+        const prevLerp = nightLerp;
+        nightLerp += (nightTarget - nightLerp) * LERP_SPEED;
+        if (Math.abs(nightLerp - nightTarget) < 0.001) { nightLerp = nightTarget; nightTransitioning = false; }
         const nl = nightLerp;
 
-        // Lights
-        sunLight.intensity  = SC.sunInt  * (1 - nl);
-        moonLight.intensity = 0.9        * nl;
+        sunLight.intensity   = SC.sunInt  * (1 - nl);
+        moonLight.intensity  = 0.9        * nl;
         ambientLight.intensity = THREE.MathUtils.lerp(SC.ambientInt, NIGHT.ambientInt, nl);
-        ambientLight.color.set(new THREE.Color().lerpColors(
-            new THREE.Color(SC.ambientColor), new THREE.Color(NIGHT.ambientColor), nl
-        ));
-
-        // Sky
-        skyUniforms.uTop.value.lerpColors(
-            new THREE.Color(SC.skyTop), new THREE.Color(NIGHT.skyTop), nl
-        );
-        skyUniforms.uBottom.value.lerpColors(
-            new THREE.Color(SC.skyBottom), new THREE.Color(NIGHT.skyBottom), nl
-        );
-
-        // Fog
-        const fc = new THREE.Color().lerpColors(
-            new THREE.Color(SC.fogColor), new THREE.Color(NIGHT.fogColor), nl
-        );
+        ambientLight.color.lerpColors(_ca.set(SC.ambientColor), _cb.set(NIGHT.ambientColor), nl);
+        skyUniforms.uTop.value.lerpColors(   _ca.set(SC.skyTop),    _cb.set(NIGHT.skyTop),    nl);
+        skyUniforms.uBottom.value.lerpColors(_ca.set(SC.skyBottom), _cb.set(NIGHT.skyBottom), nl);
+        _cc.set(SC.fogColor); const fc = _cc.lerpColors(_ca.set(SC.fogColor), _cb.set(NIGHT.fogColor), nl);
         scene.fog.color.copy(fc);
-        renderer.setClearColor(fc, 1);
+        if (!introDone || camera.position.y <= 48) renderer.setClearColor(fc, 1);
 
-        // Sun / Moon objects
-        sunMesh.visible  = nl < 0.55;
-        moonMesh.visible = nl > 0.25;
-
-        // Tone
+        /* Sun/moon visibility is set in the arc section below */
         renderer.toneMappingExposure = THREE.MathUtils.lerp(1.1, 0.6, nl);
 
-        /* — Fireflies ────────────────────────────────── */
+        /* T039: Star field opacity */
+        starMat.opacity = Math.max(nl - 0.2, 0) * 1.3;
+
+        /* Moon/sun arc is handled further below, after star field */
+
+        /* — Fireflies — */
         ffMat.opacity = Math.max(nl - 0.15, 0) * 1.1;
         if (nl > 0.1) {
             const fa = ffGeo.attributes.position.array;
             for (let i = 0; i < FF_COUNT; i++) {
-                const d = ffData[i];
+                const d  = ffData[i];
                 const t2 = time * d.sp + d.ph;
-                fa[i * 3]     = d.bx + Math.sin(t2) * d.r;
-                fa[i * 3 + 1] = d.by + Math.sin(t2 * 1.6) * 0.8;
-                fa[i * 3 + 2] = d.bz + Math.cos(t2 * 0.75) * d.r;
+                fa[i*3]     = d.bx + Math.sin(t2) * d.r;
+                fa[i*3 + 1] = d.by + Math.sin(t2 * 1.6) * 0.8;
+                fa[i*3 + 2] = d.bz + Math.cos(t2 * 0.75) * d.r;
             }
             ffGeo.attributes.position.needsUpdate = true;
             ffMat.size = 0.3 + (Math.sin(time * 1.8) * 0.5 + 0.5) * 0.25 * nl;
         }
 
-        /* — Seasonal particles ───────────────────────── */
-        for (let i = 0; i < PART_COUNT; i++) {
-            const v = pVel[i];
-            v.wb += v.ws;
-            pPos[i * 3]     += v.vx + Math.sin(v.wb) * 0.008;
-            pPos[i * 3 + 1] += v.vy + (SEASON === 'winter' ? 0 : Math.cos(v.wb * 0.7) * 0.004);
-            pPos[i * 3 + 2] += v.vz;
-            if (pPos[i * 3 + 1] < -3) {
-                pPos[i * 3]     = camera.position.x + (Math.random() - 0.5) * 60;
-                pPos[i * 3 + 1] = camera.position.y + 18 + Math.random() * 8;
-                pPos[i * 3 + 2] = camera.position.z + (Math.random() - 0.5) * 60;
-            }
-        }
-        partGeo.attributes.position.needsUpdate = true;
+        /* T037: Grass uniforms */
+        grassUniforms.uTime.value         = time;
+        grassUniforms.uWindStrength.value = REDUCED_MOTION ? 0.01 : 0.35;
+        grassOutlineMat.uniforms.uTime.value = time;
 
-        /* — Rain ─────────────────────────────────────── */
+        /* — Seasonal particles — */
+        if (particlesMat.opacity > 0.01) {
+            for (let i = 0; i < PART_MAX; i++) {
+                const v = pVel[i];
+                v.wb += v.ws;
+                pPos[i*3]     += v.vx + Math.sin(v.wb) * 0.008;
+                pPos[i*3 + 1] += v.vy + (currentSeason === 'winter' ? 0 : Math.cos(v.wb * 0.7) * 0.004);
+                pPos[i*3 + 2] += v.vz;
+                if (pPos[i*3 + 1] < -3) {
+                    pPos[i*3]     = camera.position.x + (Math.random() - 0.5) * 60;
+                    pPos[i*3 + 1] = camera.position.y + 18 + Math.random() * 8;
+                    pPos[i*3 + 2] = camera.position.z + (Math.random() - 0.5) * 60;
+                }
+            }
+            partGeo.attributes.position.needsUpdate = true;
+        }
+
+        /* — Rain — */
         if (rainMat.opacity > 0.01) {
             const ra = rainGeo.attributes.position.array;
             for (let i = 0; i < RAIN_COUNT; i++) {
-                ra[i * 3]     += 0.06;
-                ra[i * 3 + 1] -= 0.55;
-                if (ra[i * 3 + 1] < -3) {
-                    ra[i * 3]     = camera.position.x + (Math.random() - 0.5) * 70;
-                    ra[i * 3 + 1] = camera.position.y + 22;
-                    ra[i * 3 + 2] = camera.position.z + (Math.random() - 0.5) * 70;
+                ra[i*3]     += 0.06;
+                ra[i*3 + 1] -= 0.55;
+                if (ra[i*3 + 1] < -3) {
+                    ra[i*3]     = camera.position.x + (Math.random() - 0.5) * 70;
+                    ra[i*3 + 1] = camera.position.y + 22;
+                    ra[i*3 + 2] = camera.position.z + (Math.random() - 0.5) * 70;
                 }
             }
             rainGeo.attributes.position.needsUpdate = true;
         }
 
-        /* — Water ────────────────────────────────────── */
-        waterUniforms.uTime.value = time;
+        /* T047: Creek time */
+        creekUniforms.uTime.value = time;
 
-        /* — Clouds drift ─────────────────────────────── */
+        /* — Clouds drift — */
         for (let i = 0; i < cloudGroup.children.length; i++) {
             const cl = cloudGroup.children[i];
             cl.position.x += 0.006 * (1 + (i % 4) * 0.25);
@@ -691,47 +1152,82 @@
             if (cl.position.x > 140) cl.position.x = -140;
         }
 
-        /* — Tree sway ────────────────────────────────── */
+        /* — Tree sway — */
         for (let i = 0; i < treeGroup.children.length; i++) {
             const tr = treeGroup.children[i];
-            const sw = 0.0025 + (SEASON === 'winter' ? 0.002 : 0);
+            const sw = REDUCED_MOTION ? 0 : (0.0025 + (currentSeason === 'winter' ? 0.002 : 0));
             tr.rotation.z = Math.sin(time * 0.45 + i * 0.55) * sw;
             tr.rotation.x = Math.cos(time * 0.35 + i * 0.38) * sw * 0.4;
         }
 
-        /* — Sun arc ──────────────────────────────────── */
-        const sa = time * 0.015;
-        sunMesh.position.x = Math.cos(sa) * 180;
-        sunMesh.position.y = 60 + Math.sin(sa) * 80;
-        sunLight.position.copy(sunMesh.position);
+        /* — Sun arc — sweeps across the sky in front of the camera —
+           Horizontal arc in XY-plane at fixed Z = -320 (always ahead of camera).
+           One full cycle every ~785 s at speed 0.008; well within camera frustum. */
+        const sa   = time * 0.008 + arcOffset;
+        const sunX = Math.cos(sa) * 80;           /* left–right sweep ±80  */
+        const sunY = 48 + Math.sin(sa) * 65;      /* rises 113 → sets -17  */
+        const sunZ = -280;
+        sunMesh.position.set(sunX, sunY, sunZ);
+        sunGlowMesh.position.copy(sunMesh.position);
+        sunLight.position.set(sunX, sunY, sunZ);
+
+        /* Hide sun below horizon or in night mode */
+        const sunAbove = sunY > -10;
+        sunMesh.visible      = nl < 0.6  && sunAbove;
+        sunGlowMesh.visible  = nl < 0.55 && sunAbove;
+
+        /* — Moon arc — offset by π so it rises when sun sets — */
+        const moonX = Math.cos(sa + Math.PI) * 80;
+        const moonY = 48 + Math.sin(sa + Math.PI) * 65;
+        moonMesh.position.set(moonX, moonY, sunZ);
+        moonGlowMesh.position.copy(moonMesh.position);
+        moonLight.position.set(moonX, moonY, sunZ);
+
+        const moonAbove = moonY > -20;
+        moonMesh.visible     = nl > 0.25 && moonAbove;
+        moonGlowMesh.visible = nl > 0.20 && moonAbove;
+
+        /* — Aurora Borealis — visible only in Winter night — */
+        if (currentSeason === 'winter' && nl > 0.25) {
+            auroraMesh.visible = true;
+            auroraUniforms.uTime.value      = time;
+            auroraUniforms.uIntensity.value = Math.min((nl - 0.25) / 0.75, 1.0);
+        } else {
+            auroraMesh.visible = false;
+        }
 
         renderer.render(scene, camera);
     }
-
     animate();
 
-    /* ────────────────────────────────────────────────────────
-       20. RESIZE
-    ──────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────
+       RESIZE
+    ───────────────────────────────────────────────────────── */
     window.addEventListener('resize', () => {
         camera.aspect = W() / H();
         camera.updateProjectionMatrix();
         renderer.setSize(W(), H());
     });
 
-    /* ────────────────────────────────────────────────────────
-       21. PUBLIC API
-    ──────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────────────────
+       PUBLIC API
+    ───────────────────────────────────────────────────────── */
     window.forestScene = {
         toggleDayNight,
-        setRain: (v) => {
-            if (typeof gsap !== 'undefined') {
-                gsap.to(rainMat, { opacity: v ? 0.55 : 0, duration: 2 });
-            } else {
-                rainMat.opacity = v ? 0.55 : 0;
-            }
+        setRain(v) {
+            if (typeof gsap !== 'undefined') gsap.to(rainMat, { opacity: v ? 0.55 : 0, duration: 2 });
+            else rainMat.opacity = v ? 0.55 : 0;
         },
-        get isNight() { return isNight; }
+        get isNight()   { return isNight; },
+        get introDone() { return introDone; }
+    };
+
+    window.grassSystem = {
+        get tier() { return TIER; },
+        setWind(strength, dirX, dirZ) {
+            grassUniforms.uWindStrength.value      = strength;
+            grassUniforms.uWindDirection.value.set(dirX, dirZ);
+        }
     };
 
 }());

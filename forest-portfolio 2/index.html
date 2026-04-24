@@ -3,30 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Alex Chen — Developer Portfolio</title>
+    <title>Khaled Nached — Developer Portfolio</title>
 
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: {
-                        'display': ['"Playfair Display"', 'serif'],
-                        'body': ['"Cormorant Garamond"', 'serif'],
-                    }
-                }
-            }
-        }
-    </script>
+    <!-- T003: Content Security Policy -->
+    <meta http-equiv="Content-Security-Policy" content="
+        default-src 'self';
+        script-src  'self'
+                    https://cdnjs.cloudflare.com
+                    https://cdn.jsdelivr.net;
+        style-src   'self'
+                    https://fonts.googleapis.com
+                    'unsafe-inline';
+        font-src    'self'
+                    https://fonts.gstatic.com;
+        img-src     'self' data:;
+        connect-src 'none';
+        object-src  'none';
+        base-uri    'self';
+        form-action 'none';
+    ">
 
-    <!-- Three.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- T001: Committed Tailwind build (replaces CDN) -->
+    <link rel="stylesheet" href="css/tailwind.css">
 
-    <!-- GSAP + ScrollTrigger -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+    <!-- T002: Three.js r128 with SRI -->
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
+        integrity="sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu"
+        crossorigin="anonymous"></script>
+
+    <!-- T002: GSAP 3.12.2 with SRI -->
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"
+        integrity="sha384-d+vyQ0dYcymoP8ndq2hW7FGC50nqGdXUEgoOUGxbbkAJwZqL7h+jKN0GGgn9hFDS"
+        crossorigin="anonymous"></script>
+
+    <!-- T002: GSAP ScrollTrigger with SRI -->
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"
+        integrity="sha384-poC0r6usQOX2Ayt/VGA+t81H6V3iN9L+Irz9iO8o+s0X20tLpzc9DOOtnKxhaQSE"
+        crossorigin="anonymous"></script>
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -51,6 +67,9 @@
 
     <!-- ====================== THREE.JS CANVAS ====================== -->
     <canvas id="three-canvas"></canvas>
+
+    <!-- ====================== NO-WEBGL FALLBACK ====================== -->
+    <div id="no-webgl-bg" style="display:none;"></div>
 
     <!-- ====================== HUD / UI CONTROLS ====================== -->
     <div id="hud" class="fixed top-0 left-0 right-0 z-50 flex justify-between items-start p-6 pointer-events-none">
@@ -79,6 +98,15 @@
         </div>
     </div>
 
+    <!-- ====================== SEASON SELECTOR (T027) ====================== -->
+    <div id="season-selector" role="group" aria-label="Select season">
+        <button class="season-btn" data-season="spring" aria-label="Spring">🌸</button>
+        <button class="season-btn" data-season="summer" aria-label="Summer">☀️</button>
+        <button class="season-btn" data-season="fall"   aria-label="Fall">🍁</button>
+        <button class="season-btn" data-season="winter" aria-label="Winter">❄️</button>
+      
+    </div>
+
     <!-- ====================== SEASON/ENV BADGE ====================== -->
     <div id="env-badge-wrap" class="fixed bottom-6 left-6 z-50 opacity-0" style="transition: opacity 1s ease;">
         <div id="season-badge" class="env-badge"></div>
@@ -91,7 +119,7 @@
         <section id="hero" class="section-hero">
             <div class="hero-content opacity-0" id="hero-content">
                 <div class="hero-eyebrow">Full-Stack Developer</div>
-                <h1 class="hero-title font-display">Alex Chen</h1>
+                <h1 class="hero-title font-display">Khaled Nached</h1>
                 <p class="hero-subtitle font-body">
                     Crafting digital experiences at the<br>intersection of art &amp; technology
                 </p>
@@ -114,7 +142,7 @@
                     A developer<br><em>rooted in craft</em>
                 </h2>
                 <div class="panel-body font-body">
-                    <p>I'm a full-stack developer with 6 years of experience building thoughtful, high-performance web applications. My work lives at the intersection of technical precision and creative intuition.</p>
+                    <p>I'm a full-stack developer with 7 years of experience building thoughtful, high-performance web applications. My work lives at the intersection of technical precision and creative intuition.</p>
                     <p>Specialising in interactive experiences, real-time systems, and data-driven applications — I believe that great software, like a great forest, should feel natural, alive, and endlessly explorable.</p>
                     <p>When I'm not writing code, you'll find me hiking trails exactly like this one, drawing inspiration from systems that have evolved for millennia.</p>
                 </div>
@@ -144,49 +172,97 @@
                 </h2>
                 <div class="project-list">
 
-                    <a href="#" class="project-row">
+                    <a href="projects/nova.html" class="project-row">
                         <span class="project-index font-display">01</span>
                         <div class="project-details">
-                            <h3 class="project-name font-display">EcoTrack</h3>
-                            <p class="project-desc font-body">Real-time environmental monitoring dashboard with ML-powered anomaly detection and predictive analytics</p>
+                            <h3 class="project-name font-display">Nova</h3>
+                            <p class="project-desc font-body">Music distribution platform for artists under East Rock Entertainment. Tiered memberships, uploads, and subscriptions.</p>
                             <div class="project-stack">
-                                <span>React</span><span>Python</span><span>TensorFlow</span><span>AWS</span>
+                                <span>CodeIgniter / PHP</span><span>HTML</span><span>CSS</span><span>JavaScript</span><span>MySQL</span>
                             </div>
                         </div>
                         <span class="project-arrow">→</span>
                     </a>
 
-                    <a href="#" class="project-row">
+                    <a href="projects/nhic.html" class="project-row">
                         <span class="project-index font-display">02</span>
                         <div class="project-details">
-                            <h3 class="project-name font-display">Meridian</h3>
-                            <p class="project-desc font-body">Collaborative design platform serving 50k+ designers with real-time sync and version control</p>
+                            <h3 class="project-name font-display">NHIC School Management System</h3>
+                            <p class="project-desc font-body">Digital education platform for NHIC. Online learning, parent dashboards, and admin tools. Beta development.</p>
                             <div class="project-stack">
-                                <span>Next.js</span><span>WebSockets</span><span>PostgreSQL</span><span>Redis</span>
+                                <span>PHP / Laravel</span><span>JavaScript</span><span>HTML</span><span>CSS</span><span>MySQL</span>
                             </div>
                         </div>
                         <span class="project-arrow">→</span>
                     </a>
 
-                    <a href="#" class="project-row">
+                    <a href="projects/uecg.html" class="project-row">
                         <span class="project-index font-display">03</span>
                         <div class="project-details">
-                            <h3 class="project-name font-display">Arbor</h3>
-                            <p class="project-desc font-body">Knowledge graph visualisation tool for enterprise data relationships, processing 10M+ nodes</p>
+                            <h3 class="project-name font-display">UECG Platform</h3>
+                            <p class="project-desc font-body">Education consultancy system for UECG. CMS, newsletter, contact, and admin dashboard for institutions and students.</p>
                             <div class="project-stack">
-                                <span>D3.js</span><span>GraphQL</span><span>Neo4j</span><span>Docker</span>
+                                <span>Laravel 10</span><span>React.js</span><span>MySQL</span>
                             </div>
                         </div>
                         <span class="project-arrow">→</span>
                     </a>
 
-                    <a href="#" class="project-row">
+                    <a href="projects/prestige.html" class="project-row">
                         <span class="project-index font-display">04</span>
                         <div class="project-details">
-                            <h3 class="project-name font-display">Pulsewave</h3>
-                            <p class="project-desc font-body">Music streaming platform with spatial audio, 3D visualisations, and ML-driven recommendations</p>
+                            <h3 class="project-name font-display">Prestige Limo CT</h3>
+                            <p class="project-desc font-body">Limousine booking system with online scheduling, Stripe payments, and customer management.</p>
                             <div class="project-stack">
-                                <span>Vue.js</span><span>WebAudio API</span><span>FastAPI</span><span>Redis</span>
+                                <span>Laravel 10</span><span>Blade</span><span>JavaScript</span><span>Stripe API</span><span>MySQL</span>
+                            </div>
+                        </div>
+                        <span class="project-arrow">→</span>
+                    </a>
+
+                    <a href="projects/hamden.html" class="project-row">
+                        <span class="project-index font-display">05</span>
+                        <div class="project-details">
+                            <h3 class="project-name font-display">Hamden Education Foundation</h3>
+                            <p class="project-desc font-body">Web app for Hamden Education Foundation. Multi-role access, admin dashboard, and content management.</p>
+                            <div class="project-stack">
+                                <span>PHP / Laravel</span><span>HTML</span><span>CSS</span><span>JavaScript</span><span>000webhost</span>
+                            </div>
+                        </div>
+                        <span class="project-arrow">→</span>
+                    </a>
+
+                    <a href="projects/nexttier.html" class="project-row">
+                        <span class="project-index font-display">06</span>
+                        <div class="project-details">
+                            <h3 class="project-name font-display">Next Tier Solutions</h3>
+                            <p class="project-desc font-body">Corporate web platform for service presentation, content management, and client inquiries.</p>
+                            <div class="project-stack">
+                                <span>HTML</span><span>CSS</span><span>JavaScript</span><span>PHP / Laravel</span>
+                            </div>
+                        </div>
+                        <span class="project-arrow">→</span>
+                    </a>
+
+                    <a href="projects/vive.html" class="project-row">
+                        <span class="project-index font-display">07</span>
+                        <div class="project-details">
+                            <h3 class="project-name font-display">Vive Aventuras Caribeñas</h3>
+                            <p class="project-desc font-body">Travel experience platform for the Caribbean. Packages, visual showcase, and customer inquiries.</p>
+                            <div class="project-stack">
+                                <span>HTML</span><span>CSS</span><span>JavaScript</span><span>PHP</span>
+                            </div>
+                        </div>
+                        <span class="project-arrow">→</span>
+                    </a>
+
+                    <a href="projects/jummah.html" class="project-row">
+                        <span class="project-index font-display">08</span>
+                        <div class="project-details">
+                            <h3 class="project-name font-display">Jummah Translate</h3>
+                            <p class="project-desc font-body">Real-time sermon translation tool for multilingual accessibility. Translation APIs and JS frontend.</p>
+                            <div class="project-stack">
+                                <span>JavaScript</span><span>Translation APIs</span>
                             </div>
                         </div>
                         <span class="project-arrow">→</span>
@@ -209,6 +285,8 @@
                         <div class="skill-group-label">Frontend</div>
                         <div class="skill-list">
                             <div class="skill-item"><span class="skill-name">React / Next.js</span><div class="skill-track"><div class="skill-bar" data-w="95"></div></div></div>
+                            <div class="skill-item"><span class="skill-name">React Native</span><div class="skill-track"><div class="skill-bar" data-w="95"></div></div></div>
+                            <div class="skill-item"><span class="skill-name">Angular</span><div class="skill-track"><div class="skill-bar" data-w="95"></div></div></div>
                             <div class="skill-item"><span class="skill-name">TypeScript</span><div class="skill-track"><div class="skill-bar" data-w="90"></div></div></div>
                             <div class="skill-item"><span class="skill-name">Three.js / WebGL</span><div class="skill-track"><div class="skill-bar" data-w="80"></div></div></div>
                             <div class="skill-item"><span class="skill-name">CSS / Animation</span><div class="skill-track"><div class="skill-bar" data-w="92"></div></div></div>
@@ -218,6 +296,7 @@
                     <div class="skill-group">
                         <div class="skill-group-label">Backend</div>
                         <div class="skill-list">
+                            <div class="skill-item"><span class="skill-name">Laravel + Livewire</span><div class="skill-track"><div class="skill-bar" data-w="88"></div></div></div>
                             <div class="skill-item"><span class="skill-name">Node.js / Express</span><div class="skill-track"><div class="skill-bar" data-w="88"></div></div></div>
                             <div class="skill-item"><span class="skill-name">Python / FastAPI</span><div class="skill-track"><div class="skill-bar" data-w="82"></div></div></div>
                             <div class="skill-item"><span class="skill-name">PostgreSQL</span><div class="skill-track"><div class="skill-bar" data-w="85"></div></div></div>
@@ -241,7 +320,7 @@
                 </p>
 
                 <form id="contact-form" novalidate>
-                    <!-- Honeypot -->
+                    <!-- Honeypot (T017) -->
                     <input name="_hp" type="text" tabindex="-1" autocomplete="off" style="display:none!important;" aria-hidden="true">
 
                     <div class="form-row">
@@ -271,6 +350,10 @@
                         <div id="form-success" class="form-success hidden">
                             ✓ Message sent! I'll get back to you soon.
                         </div>
+                        <div id="form-fallback" class="form-fallback hidden">
+                            No mail client detected. You can reach me directly at:
+                            <span id="fallback-email" class="fallback-email-text"></span>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -278,11 +361,11 @@
 
         <!-- ── FOOTER ──────────────────────────────────── -->
         <footer class="site-footer font-body">
-            <p class="footer-copy">© 2025 Alex Chen — Crafted with code &amp; care</p>
+            <p class="footer-copy">© 2025 Khaled Nached — Crafted with code &amp; care</p>
             <div class="footer-links">
-                <a href="https://github.com" target="_blank">GitHub</a>
-                <a href="https://linkedin.com" target="_blank">LinkedIn</a>
-                <a href="https://twitter.com" target="_blank">Twitter</a>
+                <a href="https://github.com" target="_blank" rel="noopener noreferrer">GitHub</a>
+                <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer">LinkedIn</a>
+                <a href="https://twitter.com" target="_blank" rel="noopener noreferrer">Twitter</a>
             </div>
         </footer>
 

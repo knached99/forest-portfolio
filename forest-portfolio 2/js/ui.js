@@ -5,115 +5,121 @@
 (function () {
     'use strict';
 
+    const audioMap = {
+        spring: {
+            day:  'audio/day_forest.mp3',
+            night:'audio/night_forest.mp3'
+        },
+        summer: {
+            day:  'audio/day_forest.mp3',
+            night:'audio/night_forest.mp3'
+        },
+        fall: {
+            day:  'audio/fall_winter_forest.mp3',
+            night:'audio/night_forest.mp3'
+        },
+        winter: {
+            day:  'audio/fall_winter_forest.mp3',
+            night:'audio/winter_forest_night.mp3'
+        }
+    };
+    
+
     /* ── Day / Night Toggle ─────────────────────────────── */
     const dayNightBtn = document.getElementById('day-night-btn');
     if (dayNightBtn) {
         const dayIcon   = dayNightBtn.querySelector('.day-icon');
         const nightIcon = dayNightBtn.querySelector('.night-icon');
 
+        /* T042: Initialize button state from current scene state */
+        function syncDayNightBtn() {
+            if (!window.forestScene) return;
+            const night = window.forestScene.isNight;
+            dayIcon   && dayIcon.classList.toggle('hidden', night);
+            nightIcon && nightIcon.classList.toggle('hidden', !night);
+            dayNightBtn.setAttribute('title', night ? 'Switch to Day' : 'Switch to Night');
+        }
+
         dayNightBtn.addEventListener('click', () => {
             if (window.forestScene) {
                 window.forestScene.toggleDayNight();
-                const night = window.forestScene.isNight;
-                dayIcon.classList.toggle('hidden', night);
-                nightIcon.classList.toggle('hidden', !night);
-                dayNightBtn.setAttribute('title', night ? 'Switch to Day' : 'Switch to Night');
+                syncDayNightBtn();
+                updateAmbientAudio(); // Update audio based on new time of day
             }
         });
+
+        /* Sync once scene is ready (world.js fires this after init) */
+        window.addEventListener('forestSceneReady', syncDayNightBtn, { once: true });
+        /* Fallback: sync after short delay in case event already fired */
+        setTimeout(syncDayNightBtn, 600);
     }
 
-    /* ── Audio Toggle (Web Audio) ───────────────────────── */
-    const audioBtn      = document.getElementById('audio-btn');
-    const soundOnIcon   = audioBtn && audioBtn.querySelector('.sound-on-icon');
-    const soundOffIcon  = audioBtn && audioBtn.querySelector('.sound-off-icon');
+    /* ── Audio Toggle (MP3-based) ───────────────────────── */
+const audioBtn = document.getElementById('audio-btn');
+const soundOnIcon = audioBtn && audioBtn.querySelector('.sound-on-icon');
+const soundOffIcon = audioBtn && audioBtn.querySelector('.sound-off-icon');
 
-    let audioCtx  = null;
-    let gainNode  = null;
-    let audioOn   = false;
-    let ambientNodes = [];
+let audioEl = new Audio();
+audioEl.loop = true;
+audioEl.volume = 0.35;
 
-    function createForestSound() {
-        if (audioCtx) return;
-        try {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            gainNode = audioCtx.createGain();
-            gainNode.gain.value = 0;
-            gainNode.connect(audioCtx.destination);
+let audioOn = false;
 
-            // Layer 1: Wind (low-frequency filtered noise)
-            createNoiseLayer(0.5, 180, 0.08);
-            // Layer 2: Leaves (higher pitch filtered noise)
-            createNoiseLayer(3.5, 1200, 0.04);
-            // Layer 3: Gentle rumble
-            createToneLayer(55, 0.03);
-            createToneLayer(110, 0.015);
+// Get current season
+function getSeason() {
+    if (window.seasonManager?.currentSeason) {
+        return window.seasonManager.currentSeason;
+    }
 
-            // Fade in
-            gainNode.gain.linearRampToValueAtTime(0.35, audioCtx.currentTime + 3);
-        } catch (e) {
-            console.warn('Web Audio not supported:', e);
+    const m = new Date().getMonth();
+    if (m >= 2 && m <= 4) return 'spring';
+    if (m >= 5 && m <= 7) return 'summer';
+    if (m >= 8 && m <= 10) return 'fall';
+    return 'winter';
+}
+
+// Update audio based on season + day/night
+function updateAmbientAudio() {
+    if (!audioOn) return;
+
+    const season = getSeason();
+    const isNight = window.forestScene?.isNight;
+    const timeKey = isNight ? 'night' : 'day';
+
+    const src = audioMap[season]?.[timeKey];
+    if (!src) return;
+
+    if (!audioEl.src.includes(src)) {
+        audioEl.src = src;
+        audioEl.play().catch(() => {});
+    }
+}
+
+// Button click
+if (audioBtn) {
+    audioBtn.addEventListener('click', () => {
+        audioOn = !audioOn;
+
+        if (audioOn) {
+            updateAmbientAudio();
+            soundOnIcon?.classList.remove('hidden');
+            soundOffIcon?.classList.add('hidden');
+        } else {
+            audioEl.pause();
+            soundOnIcon?.classList.add('hidden');
+            soundOffIcon?.classList.remove('hidden');
         }
-    }
 
-    function createNoiseLayer(playbackRate, filterFreq, gainAmt) {
-        const bufLen  = audioCtx.sampleRate * 3;
-        const buf     = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
-        const data    = buf.getChannelData(0);
-        for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+        audioBtn.setAttribute(
+            'title',
+            audioOn ? 'Mute Forest Sounds' : 'Unmute Forest Sounds'
+        );
+    });
+}
 
-        const src    = audioCtx.createBufferSource();
-        src.buffer   = buf;
-        src.loop     = true;
-        src.playbackRate.value = playbackRate;
+// Sync when scene loads
+window.addEventListener('forestSceneReady', updateAmbientAudio);
 
-        const filter = audioCtx.createBiquadFilter();
-        filter.type  = 'bandpass';
-        filter.frequency.value = filterFreq;
-        filter.Q.value = 0.8;
-
-        const gain   = audioCtx.createGain();
-        gain.gain.value = gainAmt;
-
-        src.connect(filter);
-        filter.connect(gain);
-        gain.connect(gainNode);
-        src.start();
-        ambientNodes.push(src, filter, gain);
-    }
-
-    function createToneLayer(freq, amp) {
-        const osc = audioCtx.createOscillator();
-        osc.type  = 'sine';
-        osc.frequency.value = freq;
-        const g   = audioCtx.createGain();
-        g.gain.value = amp;
-        osc.connect(g);
-        g.connect(gainNode);
-        osc.start();
-        ambientNodes.push(osc, g);
-    }
-
-    if (audioBtn) {
-        audioBtn.addEventListener('click', () => {
-            audioOn = !audioOn;
-            if (audioOn) {
-                createForestSound();
-                if (gainNode) {
-                    gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
-                    gainNode.gain.linearRampToValueAtTime(0.35, audioCtx.currentTime + 1.5);
-                }
-                soundOnIcon  && soundOnIcon.classList.remove('hidden');
-                soundOffIcon && soundOffIcon.classList.add('hidden');
-            } else {
-                if (gainNode) {
-                    gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1.2);
-                }
-                soundOnIcon  && soundOnIcon.classList.add('hidden');
-                soundOffIcon && soundOffIcon.classList.remove('hidden');
-            }
-            audioBtn.setAttribute('title', audioOn ? 'Mute Forest Sounds' : 'Unmute Forest Sounds');
-        });
-    }
 
     /* ── Smooth Scroll for Anchor Links ─────────────────── */
     document.querySelectorAll('a[href^="#"]').forEach(link => {
@@ -139,6 +145,41 @@
         lastY = y;
     }, { passive: true });
 
+    /* ── T029: Season Selector ───────────────────────────── */
+    const seasonBtns = document.querySelectorAll('.season-btn');
+    if (seasonBtns.length) {
+        function updateSeasonActive(name) {
+            seasonBtns.forEach(btn => {
+                btn.classList.toggle('season-btn--active', btn.dataset.season === name);
+            });
+        }
+
+        seasonBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const s = btn.dataset.season;
+                if (window.seasonManager && !window.seasonManager.isTransitioning) {
+                    window.seasonManager.setSeason(s);
+                    updateSeasonActive(s);
+                }
+            });
+        });
+
+        /* Listen for external season changes (e.g., from world.js) */
+        if (window.seasonManager) {
+            window.seasonManager.onSeasonChange(name => updateSeasonActive(name));
+            updateSeasonActive(window.seasonManager.currentSeason);
+        }
+
+        /* Retry once scene is ready */
+        window.addEventListener('forestSceneReady', () => {
+            if (window.seasonManager) {
+                window.seasonManager.onSeasonChange(name => updateSeasonActive(name));
+                updateSeasonActive(window.seasonManager.currentSeason);
+                updateAmbientAudio();
+            }
+        }, { once: true });
+    }
+
     /* ── Contact Form ────────────────────────────────────── */
     const form       = document.getElementById('contact-form');
     const submitBtn  = document.getElementById('submit-btn');
@@ -151,6 +192,9 @@
     };
 
     const EMAIL_RE = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+
+    /* T016: Record form-open timestamp for time gate */
+    const _ft = Date.now();
 
     let lastSubmit = 0;   // Rate-limit timestamp
 
@@ -210,16 +254,22 @@
         form.addEventListener('submit', (e) => {
             e.preventDefault();
 
-            /* Rate limit: 10 seconds between submissions */
+            /* T017: Honeypot check — bots fill hidden fields */
+            const hp = form.querySelector('[name="_hp"]');
+            if (hp && hp.value) return;
+
+            /* T016: Time-on-form gate — reject submissions under 3 seconds */
+            if (Date.now() - _ft < 3000) {
+                setError('message', 'Please take a moment to compose your message.');
+                return;
+            }
+
+            /* T017: Rate limit — 10 seconds between submissions */
             const now = Date.now();
             if (now - lastSubmit < 10000) {
                 setError('message', 'Please wait a moment before sending again.');
                 return;
             }
-
-            /* Honeypot check */
-            const hp = form.querySelector('[name="_hp"]');
-            if (hp && hp.value) return; // Bot detected
 
             clearErrors();
 
@@ -231,35 +281,48 @@
 
             if (!validateForm(data)) return;
 
-            /* Submit */
             lastSubmit = now;
             submitBtn.disabled = true;
             submitBtn.querySelector('.btn-label').classList.add('hidden');
             submitBtn.querySelector('.btn-sending').classList.remove('hidden');
 
-            /* Sanitize */
+            /* T015: Obfuscated destination — assembled at runtime, never in source as a string */
+            const _d = ['khalednached', '11', '@', 'gmail', '.com'];
+            const dest = _d.join('');
+
             const safeName    = sanitize(data.name);
             const safeMessage = sanitize(data.message);
 
-            // Build mailto (no backend needed)
-            const subject = encodeURIComponent(`Portfolio Contact from ${safeName}`);
+            const subject = encodeURIComponent('Portfolio Contact from ' + safeName);
             const body    = encodeURIComponent(
-                `Name: ${safeName}\nEmail: ${data.email}\n\nMessage:\n${safeMessage}`
+                'Name: ' + safeName + '\nEmail: ' + data.email + '\n\nMessage:\n' + safeMessage
             );
-            const mailtoHref = `mailto:hello@alexchen.dev?subject=${subject}&body=${body}`;
+            const mailtoHref = 'mailto:' + dest + '?subject=' + subject + '&body=' + body;
 
+            /* T018: Open mailto then check if mail client responded */
             setTimeout(() => {
-                window.location.href = mailtoHref;
+                const opened = window.open(mailtoHref, '_self');
 
                 submitBtn.disabled = false;
                 submitBtn.querySelector('.btn-label').classList.remove('hidden');
                 submitBtn.querySelector('.btn-sending').classList.add('hidden');
 
-                // Show success
                 successEl.classList.remove('hidden');
                 form.reset();
-
                 setTimeout(() => successEl.classList.add('hidden'), 6000);
+
+                /* T018: Fallback — if no mail client, show readable address after 1500ms */
+                setTimeout(() => {
+                    const fallback = document.getElementById('form-fallback');
+                    const fallbackEmail = document.getElementById('fallback-email');
+                    if (fallback && fallbackEmail) {
+                        /* Only reveal if the page is still visible (didn't navigate to mail app) */
+                        if (!document.hidden) {
+                            fallbackEmail.textContent = dest;
+                            fallback.classList.remove('hidden');
+                        }
+                    }
+                }, 1500);
             }, 800);
         });
     }

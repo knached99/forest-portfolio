@@ -143,10 +143,10 @@ a { text-decoration: none; color: inherit; }
 
 .nav-logo {
     font-size: 1.6rem;
-    font-weight: 600;
-    color: var(--text);
+    font-weight: 700;
+    color: #ffffff;
     letter-spacing: 0.05em;
-    text-shadow: 0 2px 20px rgba(0,0,0,0.8);
+    text-shadow: 0 2px 12px rgba(0,0,0,0.95), 0 4px 30px rgba(0,0,0,0.7);
 }
 
 .nav-links {
@@ -160,7 +160,9 @@ a { text-decoration: none; color: inherit; }
     font-size: 0.78rem;
     letter-spacing: 0.22em;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: rgba(255, 255, 255, 0.92);
+    font-weight: 600;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.9), 0 0 20px rgba(0,0,0,0.6);
     transition: color 0.3s;
     position: relative;
     pointer-events: auto;
@@ -238,15 +240,19 @@ a { text-decoration: none; color: inherit; }
     padding: 2rem;
     pointer-events: auto;
     transition: opacity 1.5s ease;
+    background: rgba(0, 0, 0, 0.18);
+    border-radius: 8px;
 }
 
 .hero-eyebrow {
     font-size: 0.72rem;
     letter-spacing: 0.38em;
     text-transform: uppercase;
-    color: var(--accent);
+    color: #ffffff;
+    font-weight: 700;
     margin-bottom: 1.5rem;
     display: block;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.9), 0 0 20px rgba(0,0,0,0.7);
 }
 
 .hero-title {
@@ -255,16 +261,17 @@ a { text-decoration: none; color: inherit; }
     line-height: 1;
     color: #fff;
     margin-bottom: 1.5rem;
-    text-shadow: 0 6px 60px rgba(0,0,0,0.6);
+    text-shadow: 0 2px 12px rgba(0,0,0,0.85), 0 6px 60px rgba(0,0,0,0.6);
     letter-spacing: -0.02em;
 }
 
 .hero-subtitle {
     font-size: clamp(1rem, 2.2vw, 1.35rem);
-    color: var(--text-muted);
-    font-weight: 300;
+    color: rgba(255, 255, 255, 0.95);
+    font-weight: 500;
     line-height: 1.8;
     margin-bottom: 3rem;
+    text-shadow: 0 1px 10px rgba(0,0,0,0.9), 0 2px 24px rgba(0,0,0,0.7);
 }
 
 .hero-cta {
@@ -323,7 +330,9 @@ a { text-decoration: none; color: inherit; }
     font-size: 0.68rem;
     letter-spacing: 0.3em;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: rgba(255, 255, 255, 0.92);
+    font-weight: 600;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.9);
     animation: scrollHintBob 3s ease-in-out infinite;
     pointer-events: none;
 }
@@ -354,8 +363,8 @@ a { text-decoration: none; color: inherit; }
     border: 1px solid var(--glass-border);
     border-radius: 3px;
     padding: 3rem 3.5rem;
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
+    backdrop-filter: blur(var(--glass-blur)) brightness(0.85);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) brightness(0.85);
     pointer-events: auto;
     position: relative;
 
@@ -683,8 +692,111 @@ a { text-decoration: none; color: inherit; }
 
 .footer-links a:hover { color: var(--accent); }
 
+/* ── T006: No-WebGL Fallback ──────────────────────────────── */
+body.no-webgl {
+    background: linear-gradient(160deg, #1a3a1a 0%, #0d2010 40%, #0a1a0a 100%);
+}
+body.no-webgl.season-spring { background: linear-gradient(160deg, #2d4a2a 0%, #1a3020 40%, #0f1f12 100%); }
+body.no-webgl.season-summer { background: linear-gradient(160deg, #1a4a1a 0%, #0d2a0d 40%, #081508 100%); }
+body.no-webgl.season-fall   { background: linear-gradient(160deg, #4a2a0a 0%, #2a1a08 40%, #1a1008 100%); }
+body.no-webgl.season-winter { background: linear-gradient(160deg, #1a2a3a 0%, #0d1a2a 40%, #080f1a 100%); }
+
+/* ── T012: Canvas & Scroll Z-Index Enforcement ────────────── */
+/* Enforced inline on the original #three-canvas and #portfolio-scroll rules above. */
+
+/* ── T013: Glass Panel Contrast ───────────────────────────── */
+/* backdrop-filter brightness added to original .glass-panel rule below. */
+
+/* ── T014: Reduced Motion ─────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+
+    .glass-panel {
+        opacity: 1;
+        transform: none;
+        transition: none;
+    }
+
+    .loading-emblem { animation: none; }
+    .scroll-hint    { animation: none; opacity: 0.6; }
+}
+
+/* ── T028: Season Selector ────────────────────────────────── */
+#season-selector {
+    position: fixed;
+    bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+    right: 1.5rem;
+    z-index: 100;
+    display: flex;
+    gap: 0.5rem;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 100px;
+    padding: 0.45rem 0.75rem;
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    pointer-events: auto;
+}
+
+.season-btn {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.25s ease, transform 0.2s ease;
+    color: var(--text-muted);
+}
+
+.season-btn:hover {
+    background: rgba(255,255,255,0.08);
+    transform: scale(1.15);
+}
+
+.season-btn--active {
+    background: var(--accent-dim);
+    color: var(--accent);
+    box-shadow: 0 0 10px var(--accent-dim);
+}
+
+/* ── T020: Season Selector Mobile ─────────────────────────── */
+@media (max-width: 480px) {
+    #season-selector {
+        bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+        right: 1rem;
+        padding: 0.35rem 0.55rem;
+        gap: 0.3rem;
+    }
+
+    .season-btn {
+        width: 30px;
+        height: 30px;
+        font-size: 0.95rem;
+    }
+}
+
+/* ── T021: HUD Mobile ─────────────────────────────────────── */
+@media (max-width: 480px) {
+    .ui-btn { width: 34px; height: 34px; }
+    .nav-logo { font-size: 1.3rem; }
+}
+
+/* ── T022: Overflow Safety ────────────────────────────────── */
+#portfolio-scroll { overflow-x: hidden; }
+
 /* ── Night Mode Overlay ───────────────────────────────────── */
-body.night-mode .hero-title { text-shadow: 0 0 60px rgba(100,140,220,0.4); }
+body.night-mode .hero-title { text-shadow: 0 0 60px rgba(100,140,220,0.4), 0 2px 12px rgba(0,0,0,0.85); }
 body.night-mode .glass-panel { background: rgba(4,8,20,0.8); }
 
 /* ── Responsive ───────────────────────────────────────────── */

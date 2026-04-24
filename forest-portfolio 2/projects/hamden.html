@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hamden Education Foundation Web Application</title>
+    <link rel="stylesheet" href="../css/tailwind.css">
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+      body { min-height: 100vh; display: flex; flex-direction: column; }
+      .project-detail-panel { max-width: 600px; margin: 6vh auto 0 auto; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 3px; padding: 2.5rem 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.18); backdrop-filter: blur(var(--glass-blur)) brightness(0.92); -webkit-backdrop-filter: blur(var(--glass-blur)) brightness(0.92); }
+      @media (max-width: 600px) { .project-detail-panel { padding: 1.2rem 0.5rem; margin: 2vh 0.5rem 0 0.5rem; } }
+      .project-detail-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
+      .project-detail-title { font-size: 2.2rem; font-family: 'Playfair Display', serif; font-weight: 700; color: var(--accent); }
+      .project-detail-back { color: var(--text-muted); font-size: 1.1rem; text-decoration: none; transition: color 0.2s; }
+      .project-detail-back:hover { color: var(--accent); }
+      .project-detail-stack { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.2rem; }
+      .project-detail-stack span { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.22rem 0.7rem; border: 1px solid var(--glass-border); border-radius: 100px; color: var(--text-muted); background: rgba(255,255,255,0.03); }
+      .project-detail-section { margin-bottom: 1.5rem; }
+      .project-detail-section h2 { font-size: 1.15rem; color: var(--gold); margin-bottom: 0.5rem; font-family: 'Playfair Display', serif; }
+      .project-detail-section ul { margin-left: 1.2rem; }
+      .project-detail-section li { margin-bottom: 0.3rem; }
+      .project-detail-role { color: var(--text-muted); font-size: 1rem; }
+      .project-detail-footer { display: flex; justify-content: flex-end; align-items: center; margin-top: 2.5rem; gap: 1rem; flex-wrap: wrap; }
+      .season-badge { font-size: 0.8rem; color: var(--accent); background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 100px; padding: 0.3rem 1.1rem; margin-left: 0.5rem; }
+    </style>
+</head>
+<body>
+    <main class="project-detail-panel">
+      <div class="project-detail-header">
+        <a href="../index.html" class="project-detail-back">← Back</a>
+        <span id="season-badge" class="season-badge"></span>
+      </div>
+      <h1 class="project-detail-title">Hamden Education Foundation Web Application</h1>
+      <p class="font-body mb-4">A web application developed for the Hamden Education Foundation to support students, teachers, and administrative staff. The system provides tools for managing foundation activities and user interactions. Built as a senior capstone project.</p>
+      <div class="project-detail-stack mb-6">
+        <span>PHP / Laravel</span> <span>HTML</span> <span>CSS</span> <span>JavaScript</span> <span>000webhost</span>
+      </div>
+      <div class="project-detail-section">
+        <h2>Key Features</h2>
+        <ul>
+          <li>Multi-role access (students, teachers, admins)</li>
+          <li>Administrative dashboard for foundation operations</li>
+          <li>Content and activity management</li>
+          <li>Public-facing informational website</li>
+        </ul>
+      </div>
+    </main>
+    <script src="../js/project-page.js"></script>
+</body>
+</html>

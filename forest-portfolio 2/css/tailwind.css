@@ -1,0 +1,39 @@
+/* Minimal Tailwind utility subset — replaces CDN dependency (T001/T004)
+   Only classes actually used in index.html are included.              */
+
+/* Layout */
+.fixed  { position: fixed; }
+.flex   { display: flex; }
+.hidden { display: none !important; }
+
+/* Flexbox */
+.items-start   { align-items: flex-start; }
+.items-center  { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-3         { gap: 0.75rem; }
+
+/* Spacing */
+.p-6    { padding: 1.5rem; }
+
+/* Sizing */
+.w-4    { width:  1rem; }
+.h-4    { height: 1rem; }
+
+/* Positioning */
+.top-0   { top:    0; }
+.left-0  { left:   0; }
+.right-0 { right:  0; }
+.left-6  { left:   1.5rem; }
+.bottom-6 { bottom: 1.5rem; }
+.z-50    { z-index: 50; }
+
+/* Opacity */
+.opacity-0 { opacity: 0; }
+
+/* Pointer events */
+.pointer-events-none { pointer-events: none; }
+.pointer-events-auto { pointer-events: auto; }
+
+/* Typography (mirrors Tailwind fontFamily config) */
+.font-display { font-family: 'Playfair Display', serif; }
+.font-body    { font-family: 'Cormorant Garamond', serif; }
