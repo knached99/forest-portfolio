@@ -1,0 +1,22 @@
+# OS
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+
+# Editor
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Node (if Tailwind CLI used locally)
+node_modules/
+
+# Tailwind build artifacts not to commit
+# (keep css/tailwind.css committed - it IS the build output)
+
+# Environment
+.env
+.env.*
