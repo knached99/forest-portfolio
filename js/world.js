@@ -70,19 +70,52 @@
        T008: Season Configurations (expanded)
     ───────────────────────────────────────────────────────── */
     const SEASONS = {
-        spring: {
-            fogColor: 0xc2dfc4, fogDensity: 0.012,
-            skyTop: 0x87ceeb,   skyBottom: 0xbde5be,
-            groundColor: 0x4a7c3f,
-            leafColors: [0x6abf69, 0x81c784, 0xf8bbd0, 0xfce4ec, 0xa5d6a7],
-            trunkColor: 0x4a3728,
-            sunColor: 0xfffde7,  ambientColor: 0xd4e8d4, ambientInt: 0.65,
-            sunInt: 1.6, hemiSky: 0x90cbe8, hemiGround: 0x4a7c3f,
-            particleColor: 0xf8bbd0, particleSize: 0.16,
-            grassColor: 0x6abf69, grassDensity: 1.0,
-            creekColor: 0x2e8bb0, creekFrozen: false,
-            accentCss: '#82c17d', badge: '🌸 Spring'
-        },
+       spring: {
+    fogColor: 0xd7ead9, fogDensity: 0.010,
+
+    skyTop: 0x4eb8ea,
+    skyBottom: 0x99c460,
+
+    // 🌱 Ground — soft natural green (not neon)
+    groundColor: 0x99c460,
+
+    // 🌸 Leaves — lighter, softer blossom tones
+    leafColors: [
+        0x5fae5d, // medium green
+        0x78c67a, // fresh green
+        0xff7aa2, // lighter pink 🌸
+        0xff9bb5, // soft blossom pink
+        0xa5d6a7  // soft pastel green
+    ],
+
+    // 🌳 Trunks — contrast strongly with ground
+    trunkColor: 0x5c4433, // rich brown (main trunk)
+
+    // ☀️ Lighting — soft and readable
+    sunColor: 0xfff4d6,
+    ambientColor: 0xcfe6cf,
+    ambientInt: 0.6,
+    sunInt: 1.4,
+
+    hemiSky: 0x9fd3f0,
+
+    // important: slightly darker than ground for depth
+    hemiGround: 0x4e6f45,
+
+    // 🌸 Petals (match lighter blossoms)
+    particleColor: 0xffb3c7,
+    particleSize: 0.14,
+
+    // 🌿 Grass — slightly brighter than ground but not neon
+    grassColor: 0x99c460,
+    grassDensity: 1.0,
+
+    creekColor: 0x3a8fb7,
+    creekFrozen: false,
+
+    accentCss: '#7bbf8a',
+    badge: '🌸 Spring'
+},
         summer: {
             fogColor: 0x8fc48a, fogDensity: 0.01,
             skyTop: 0x1e90ff,   skyBottom: 0x72bb6e,
@@ -97,31 +130,102 @@
             accentCss: '#4db34a', badge: '☀️ Summer'
         },
         fall: {
-            fogColor: 0xc0845a, fogDensity: 0.018,
-            skyTop: 0xb07820,   skyBottom: 0xd4944a,
-            groundColor: 0x4a3018,
-            leafColors: [0xe67e22, 0xe74c3c, 0xf39c12, 0xd35400, 0xc0392b, 0xf1c40f],
-            trunkColor: 0x3e2410,
-            sunColor: 0xffe0b2,  ambientColor: 0xd4a060, ambientInt: 0.5,
-            sunInt: 1.3, hemiSky: 0xb07820, hemiGround: 0x4a3018,
-            particleColor: 0xe67e22, particleSize: 0.2,
-            grassColor: 0xe67e22, grassDensity: 0.8,
-            creekColor: 0x4a6e7a, creekFrozen: false,
-            accentCss: '#d4824a', badge: '🍁 Fall'
-        },
+    // 🌫️ Softer, slightly warm haze (not orange soup)
+    fogColor: 0xd6b48a,
+    fogDensity: 0.012,
+
+    // 🌤️ Realistic autumn sky (blue with warm tint near horizon)
+    skyTop: 0x6fa3d9,      // soft autumn blue
+    skyBottom: 0xf2c38b,   // warm sunset glow
+
+    // 🌱 Ground — earthy brown with a hint of green decay
+    groundColor: 0x5a3e24,
+
+    // 🍁 LEAVES — REAL fall palette
+    leafColors: [
+        0xc76b2b, // burnt orange
+        0xd94f2b, // orange-red
+        0xa83232, // crimson
+        0xe0a13b, // golden yellow
+        0x8b4513  // brown
+    ],
+
+    // 🌳 Trunks — slightly deeper for contrast
+    trunkColor: 0x4a2f1b,
+
+    // ☀️ Lighting — warm but not exaggerated
+    sunColor: 0xffd9a6,
+    ambientColor: 0xd8b48a,
+    ambientInt: 0.55,
+    sunInt: 1.2,
+
+    // 🌤️ Hemisphere
+    hemiSky: 0x6fa3d9,
+    hemiGround: 0x5a3e24,
+
+    // 🍂 Falling leaves particles
+    particleColor: 0xc76b2b,
+    particleSize: 0.18,
+
+    // 🌿 Grass — dry/desaturated
+    grassColor: 0xa8843a,
+    grassDensity: 0.7,
+
+    // 🌊 Creek — slightly darker, colder water
+    creekColor: 0x3f6f85,
+    creekFrozen: false,
+
+    accentCss: '#c27a3a',
+    badge: '🍁 Fall'
+},
         winter: {
-            fogColor: 0xcbd8e8, fogDensity: 0.022,
-            skyTop: 0x546e7a,   skyBottom: 0x90a4ae,
-            groundColor: 0xdce8f0,
-            leafColors: [0xb0bec5, 0x90a4ae, 0xcfd8dc, 0xe0e0e0, 0xffffff],
-            trunkColor: 0x5a4a3a,
-            sunColor: 0xe8f4fb,  ambientColor: 0xc5d8e8, ambientInt: 0.4,
-            sunInt: 1.0, hemiSky: 0x546e7a, hemiGround: 0x90a4ae,
-            particleColor: 0xffffff, particleSize: 0.22,
-            grassColor: 0x90a4ae, grassDensity: 0.5,
-            creekColor: 0x7a9dba, creekFrozen: true,
-            accentCss: '#7ab0cc', badge: '❄️ Winter'
-        }
+    // 🌫️ Slightly darker fog so things don’t disappear
+    fogColor: 0xd6e2ee,
+    fogDensity: 0.018,
+
+    // 🌤️ Sky — keep it clearly blue for contrast
+    skyTop: 0xa9c7e3,
+    skyBottom: 0xeaf3fb,
+
+    // ❄️ Ground — NOT pure white (this was your main issue)
+    groundColor: 0xe3edf6,
+
+    // 🌲 Leaves — barely there, but visible
+    leafColors: [
+        0xd6dee6,
+        0xc2ccd6,
+        0xadb8c2,
+        0xe6edf3
+    ],
+
+    // 🌳 Trunks — darker so trees stand out
+    trunkColor: 0x3a281a,
+
+    // ☀️ Lighting — slightly stronger for contrast
+    sunColor: 0xf4faff,
+    ambientColor: 0xcfddeb,
+    ambientInt: 0.5,
+    sunInt: 1.25,
+
+    // 🌤️ Hemisphere — key for depth
+    hemiSky: 0xbcd3e6,
+    hemiGround: 0xd6e2ee,
+
+    // ❄️ Snow particles
+    particleColor: 0xffffff,
+    particleSize: 0.2,
+
+    // 🌿 Grass — snow covered but NOT pure white
+    grassColor: 0xdfe8f2,
+    grassDensity: 0.35,
+
+    // 🧊 Water
+    creekColor: 0xa9c7d8,
+    creekFrozen: true,
+
+    accentCss: '#bcd3e6',
+    badge: '❄️ Winter'
+}
     };
 
     function detectSeason() {
@@ -900,7 +1004,16 @@
             tl.to(ground.material.color,             { r: new THREE.Color(ns.groundColor).r, g: new THREE.Color(ns.groundColor).g, b: new THREE.Color(ns.groundColor).b }, 0);
             tl.to(grassUniforms.uColor.value,        { r: new THREE.Color(ns.grassColor).r,  g: new THREE.Color(ns.grassColor).g,  b: new THREE.Color(ns.grassColor).b },  0);
             tl.to(creekUniforms.uColor.value,        { r: new THREE.Color(ns.creekColor).r,  g: new THREE.Color(ns.creekColor).g,  b: new THREE.Color(ns.creekColor).b },  0);
-            leafMats.forEach(m => { tl.to(m.color, { r: new THREE.Color(ns.leafColors[0]).r, g: new THREE.Color(ns.leafColors[0]).g, b: new THREE.Color(ns.leafColors[0]).b }, 0); });
+            // leafMats.forEach(m => { tl.to(m.color, { r: new THREE.Color(ns.leafColors[0]).r, g: new THREE.Color(ns.leafColors[0]).g, b: new THREE.Color(ns.leafColors[0]).b }, 0); });
+            leafMats.forEach((m, idx) => {
+            const col = new THREE.Color(ns.leafColors[idx % ns.leafColors.length]);
+
+            tl.to(m.color, {
+                r: col.r,
+                g: col.g,
+                b: col.b
+            }, 0);
+        });
         }
     };
     window.seasonManager = seasonManager;
