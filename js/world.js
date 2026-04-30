@@ -5,6 +5,25 @@
 (function () {
     'use strict';
 
+    // get season from local storage if it is there and not expired
+    function getStoredSeason() {
+    const raw = localStorage.getItem('selectedSeason');
+    if (!raw) return null;
+
+    try {
+        const data = JSON.parse(raw);
+
+        if (Date.now() > data.expires) {
+            localStorage.removeItem('selectedSeason');
+            return null;
+        }
+
+        return data.season;
+    } catch {
+        return null;
+    }
+}
+
     /* ─────────────────────────────────────────────────────────
        T005: WebGL Fallback
     ───────────────────────────────────────────────────────── */
@@ -236,7 +255,7 @@
         return 'winter';
     }
 
-    let currentSeason = detectSeason();
+    let currentSeason = getStoredSeason() || detectSeason();
     let SC = SEASONS[currentSeason];
     document.body.classList.add('season-' + currentSeason);
 
@@ -901,12 +920,44 @@
     let arcOffset     = 0;
     let camX = 0, camY = 4, camZ = 30;
 
+    // Load saved time of day
+    const storedTime = getStoredTimeOfDay();
+
+    if (storedTime !== null) {
+        isNight = storedTime;
+    }
+
+    // Sync animation system with loaded value
+    nightTarget = isNight ? 1 : 0;
+    nightLerp   = nightTarget;
+
     const NIGHT = {
         ambientColor: 0x0a1020, ambientInt: 0.12,
         skyTop: 0x020812,  skyBottom: 0x0a1018,
         fogColor: 0x060810, sunInt: 0, moonInt: 0.85
     };
 
+    // get time of day from localstorage if it is there and not expired 
+
+function getStoredTimeOfDay() {
+    const raw = localStorage.getItem('timeOfDay');
+    if (!raw) return null;
+
+    try {
+        const data = JSON.parse(raw);
+
+        if (Date.now() > data.expires) {
+            localStorage.removeItem('timeOfDay');
+            return null;
+        }
+
+        return data.isNight;
+    } catch {
+        return null;
+    }
+    }
+
+   
     /* ─────────────────────────────────────────────────────────
        T009: Season Manager
     ───────────────────────────────────────────────────────── */
@@ -947,74 +998,138 @@
         get isTransitioning()  { return _seasonTransitioning; },
         onSeasonChange(cb)     { _seasonListeners.push(cb); },
         setSeason(name) {
-            if (!SEASONS[name] || name === currentSeason || _seasonTransitioning) return;
-            if (REDUCED_MOTION) {
-                currentSeason = name;
-                SC = SEASONS[name];
-                _applySeasonInstant(name);
-                _seasonListeners.forEach(cb => cb(name));
-                return;
+    if (!SEASONS[name] || name === currentSeason || _seasonTransitioning) return;
+
+    const ns = SEASONS[name];
+
+    // 🔥 IMMEDIATE STATE UPDATE (fixes your delay)
+    currentSeason = name;
+    SC = ns;
+
+    // 🔥 Notify systems immediately (audio, UI, etc.)
+    _seasonListeners.forEach(cb => cb(name));
+
+    if (REDUCED_MOTION) {
+        _applySeasonInstant(name);
+        return;
+    }
+
+    _seasonTransitioning = true;
+
+    if (typeof gsap === 'undefined') {
+        _applySeasonInstant(name);
+        _seasonTransitioning = false;
+        return;
+    }
+
+    /* Fade particles out */
+    gsap.to(particlesMat, {
+        opacity: 0,
+        duration: 0.3,
+        onComplete: () => {
+            particlesMat.color.set(ns.particleColor);
+            particlesMat.size = ns.particleSize || 0.16;
+
+            /* Reset particle positions */
+            for (let i = 0; i < PART_MAX; i++) {
+                pPos[i * 3]     = camera.position.x + (Math.random() - 0.5) * 60;
+                pPos[i * 3 + 1] = camera.position.y + 18 + Math.random() * 8;
+                pPos[i * 3 + 2] = camera.position.z + (Math.random() - 0.5) * 60;
             }
-            _seasonTransitioning = true;
-            const ns = SEASONS[name];
 
-            if (typeof gsap === 'undefined') {
-                currentSeason = name;
-                SC = ns;
-                _applySeasonInstant(name);
-                _seasonTransitioning = false;
-                _seasonListeners.forEach(cb => cb(name));
-                return;
+            partGeo.attributes.position.needsUpdate = true;
+
+            if (ns.particleSize > 0) {
+                gsap.to(particlesMat, { opacity: 0.82, duration: 0.3 });
             }
-
-            /* Fade particles out */
-            gsap.to(particlesMat, { opacity: 0, duration: 0.3, onComplete: () => {
-                particlesMat.color.set(ns.particleColor);
-                particlesMat.size = ns.particleSize || 0.16;
-                /* Reset particle positions */
-                for (let i = 0; i < PART_MAX; i++) {
-                    pPos[i * 3]     = camera.position.x + (Math.random() - 0.5) * 60;
-                    pPos[i * 3 + 1] = camera.position.y + 18 + Math.random() * 8;
-                    pPos[i * 3 + 2] = camera.position.z + (Math.random() - 0.5) * 60;
-                }
-                partGeo.attributes.position.needsUpdate = true;
-                if (ns.particleSize > 0) gsap.to(particlesMat, { opacity: 0.82, duration: 0.3 });
-            }});
-
-            /* Tween all colors */
-            const tl = gsap.timeline({ duration: 1.5, ease: 'power2.inOut', onComplete: () => {
-                currentSeason = name;
-                SC = ns;
-                iceMesh.visible = ns.creekFrozen;
-                _seasonTransitioning = false;
-                _seasonListeners.forEach(cb => cb(name));
-                document.body.classList.remove('season-spring','season-summer','season-fall','season-winter');
-                document.body.classList.add('season-' + name);
-                document.documentElement.style.setProperty('--accent', ns.accentCss);
-                const badge = document.getElementById('season-badge');
-                if (badge) badge.textContent = ns.badge;
-            }});
-
-            tl.to(scene.fog.color,                  { r: new THREE.Color(ns.fogColor).r,    g: new THREE.Color(ns.fogColor).g,    b: new THREE.Color(ns.fogColor).b },    0);
-            tl.to(skyUniforms.uTop.value,            { r: new THREE.Color(ns.skyTop).r,      g: new THREE.Color(ns.skyTop).g,      b: new THREE.Color(ns.skyTop).b },      0);
-            tl.to(skyUniforms.uBottom.value,         { r: new THREE.Color(ns.skyBottom).r,   g: new THREE.Color(ns.skyBottom).g,   b: new THREE.Color(ns.skyBottom).b },   0);
-            tl.to(ambientLight.color,                { r: new THREE.Color(ns.ambientColor).r,g: new THREE.Color(ns.ambientColor).g,b: new THREE.Color(ns.ambientColor).b }, 0);
-            tl.to(ambientLight,                      { intensity: ns.ambientInt * (1 - nightLerp) }, 0);
-            tl.to(sunLight.color,                    { r: new THREE.Color(ns.sunColor).r,    g: new THREE.Color(ns.sunColor).g,    b: new THREE.Color(ns.sunColor).b },    0);
-            tl.to(ground.material.color,             { r: new THREE.Color(ns.groundColor).r, g: new THREE.Color(ns.groundColor).g, b: new THREE.Color(ns.groundColor).b }, 0);
-            tl.to(grassUniforms.uColor.value,        { r: new THREE.Color(ns.grassColor).r,  g: new THREE.Color(ns.grassColor).g,  b: new THREE.Color(ns.grassColor).b },  0);
-            tl.to(creekUniforms.uColor.value,        { r: new THREE.Color(ns.creekColor).r,  g: new THREE.Color(ns.creekColor).g,  b: new THREE.Color(ns.creekColor).b },  0);
-            // leafMats.forEach(m => { tl.to(m.color, { r: new THREE.Color(ns.leafColors[0]).r, g: new THREE.Color(ns.leafColors[0]).g, b: new THREE.Color(ns.leafColors[0]).b }, 0); });
-            leafMats.forEach((m, idx) => {
-            const col = new THREE.Color(ns.leafColors[idx % ns.leafColors.length]);
-
-            tl.to(m.color, {
-                r: col.r,
-                g: col.g,
-                b: col.b
-            }, 0);
-        });
         }
+    });
+
+    /* Smooth visual transition */
+    const tl = gsap.timeline({
+        duration: 1.5,
+        ease: 'power2.inOut',
+        onComplete: () => {
+            iceMesh.visible = ns.creekFrozen;
+            _seasonTransitioning = false;
+
+            document.body.classList.remove(
+                'season-spring',
+                'season-summer',
+                'season-fall',
+                'season-winter'
+            );
+            document.body.classList.add('season-' + name);
+
+            document.documentElement.style.setProperty('--accent', ns.accentCss);
+
+            const badge = document.getElementById('season-badge');
+            if (badge) badge.textContent = ns.badge;
+        }
+    });
+
+    tl.to(scene.fog.color, {
+        r: new THREE.Color(ns.fogColor).r,
+        g: new THREE.Color(ns.fogColor).g,
+        b: new THREE.Color(ns.fogColor).b
+    }, 0);
+
+    tl.to(skyUniforms.uTop.value, {
+        r: new THREE.Color(ns.skyTop).r,
+        g: new THREE.Color(ns.skyTop).g,
+        b: new THREE.Color(ns.skyTop).b
+    }, 0);
+
+    tl.to(skyUniforms.uBottom.value, {
+        r: new THREE.Color(ns.skyBottom).r,
+        g: new THREE.Color(ns.skyBottom).g,
+        b: new THREE.Color(ns.skyBottom).b
+    }, 0);
+
+    tl.to(ambientLight.color, {
+        r: new THREE.Color(ns.ambientColor).r,
+        g: new THREE.Color(ns.ambientColor).g,
+        b: new THREE.Color(ns.ambientColor).b
+    }, 0);
+
+    tl.to(ambientLight, {
+        intensity: ns.ambientInt * (1 - nightLerp)
+    }, 0);
+
+    tl.to(sunLight.color, {
+        r: new THREE.Color(ns.sunColor).r,
+        g: new THREE.Color(ns.sunColor).g,
+        b: new THREE.Color(ns.sunColor).b
+    }, 0);
+
+    tl.to(ground.material.color, {
+        r: new THREE.Color(ns.groundColor).r,
+        g: new THREE.Color(ns.groundColor).g,
+        b: new THREE.Color(ns.groundColor).b
+    }, 0);
+
+    tl.to(grassUniforms.uColor.value, {
+        r: new THREE.Color(ns.grassColor).r,
+        g: new THREE.Color(ns.grassColor).g,
+        b: new THREE.Color(ns.grassColor).b
+    }, 0);
+
+    tl.to(creekUniforms.uColor.value, {
+        r: new THREE.Color(ns.creekColor).r,
+        g: new THREE.Color(ns.creekColor).g,
+        b: new THREE.Color(ns.creekColor).b
+    }, 0);
+
+    leafMats.forEach((m, idx) => {
+        const col = new THREE.Color(ns.leafColors[idx % ns.leafColors.length]);
+
+        tl.to(m.color, {
+            r: col.r,
+            g: col.g,
+            b: col.b
+        }, 0);
+    });
+}
     };
     window.seasonManager = seasonManager;
 
@@ -1024,23 +1139,35 @@
     const LERP_SPEED = REDUCED_MOTION ? 0.12 : 0.018;
 
     function applySystemDarkMode() {
-        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-            isNight = true;
-            nightTarget = 1;
-            nightLerp   = 1;
-            document.body.classList.add('night-mode');
-            const dayIcon   = document.querySelector('.day-icon');
-            const nightIcon = document.querySelector('.night-icon');
-            if (dayIcon)   dayIcon.classList.add('hidden');
-            if (nightIcon) nightIcon.classList.remove('hidden');
-            const btn = document.getElementById('day-night-btn');
-            if (btn) btn.setAttribute('title', 'Switch to Day');
-        }
+    const storedTimeLocal = getStoredTimeOfDay();
+
+    // Do not override if user already chose
+    if (storedTimeLocal !== null) return;
+
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        isNight = true;
+        nightTarget = 1;
+        nightLerp   = 1;
+        document.body.classList.add('night-mode');
+
+        const dayIcon   = document.querySelector('.day-icon');
+        const nightIcon = document.querySelector('.night-icon');
+        if (dayIcon)   dayIcon.classList.add('hidden');
+        if (nightIcon) nightIcon.classList.remove('hidden');
+
+        const btn = document.getElementById('day-night-btn');
+        if (btn) btn.setAttribute('title', 'Switch to Day');
     }
+}
 
     function toggleDayNight() {
         if (Math.abs(nightLerp - nightTarget) > 0.05) return; /* T048: debounce */
         isNight     = !isNight;
+        const data = {
+        isNight: isNight,
+        expires: Date.now() + (30 * 24 * 60 * 60 * 1000)
+     };
+        localStorage.setItem('timeOfDay', JSON.stringify(data));
         nightTarget = isNight ? 1 : 0;
         nightTransitioning = true;
         document.body.classList.toggle('night-mode', isNight);

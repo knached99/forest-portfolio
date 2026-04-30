@@ -82,15 +82,22 @@ function getSeason() {
 function updateAmbientAudio() {
     if (!audioOn) return;
 
-    const season = getSeason();
+    const season = window.seasonManager?.currentSeason;
     const isNight = window.forestScene?.isNight;
     const timeKey = isNight ? 'night' : 'day';
 
     const src = audioMap[season]?.[timeKey];
     if (!src) return;
 
-    if (!audioEl.src.includes(src)) {
+    const fullSrc = new URL(src, window.location.href).href;
+
+    if (audioEl.src !== fullSrc) {
+        // 🔥 FORCE proper reload
+        audioEl.pause();
+        audioEl.currentTime = 0;
+        audioEl.src = '';         // clear first (important)
         audioEl.src = src;
+        audioEl.load();           // force reload
         audioEl.play().catch(() => {});
     }
 }
@@ -145,6 +152,27 @@ window.addEventListener('forestSceneReady', updateAmbientAudio);
         lastY = y;
     }, { passive: true });
 
+    // get stored season from localStorage and apply it on load 
+    function getStoredSeason() 
+    {
+        const raw = localStorage.getItem('selectedSeason');
+        if (!raw) return null; 
+
+        try {
+            const data = JSON.parse(raw);
+
+            if (Date.now() > data.expires) {
+                localStorage.removeItem('selectedSeason');
+                return null;
+            }
+
+            return data.season;
+        }
+        catch (e) {
+            localStorage.removeItem('selectedSeason');
+            return null;
+        }
+    }
     /* ── T029: Season Selector ───────────────────────────── */
     const seasonBtns = document.querySelectorAll('.season-btn');
     if (seasonBtns.length) {
@@ -160,9 +188,24 @@ window.addEventListener('forestSceneReady', updateAmbientAudio);
                 if (window.seasonManager && !window.seasonManager.isTransitioning) {
                     window.seasonManager.setSeason(s);
                     updateSeasonActive(s);
+
+                    // If audio is on, update the ambient track immediately to match the new season
+                    // if (audioOn) {
+                    //     updateAmbientAudio();
+                    // }
+                    // save the selected season to localStorage so it persists across reloads
+                    
+                    // set to expire in 30 days 
+                    const data = {
+                        season: s, 
+                        expires: Date.now() + (30 * 24 * 60 * 60 * 1000)
+
+                    }
+                    localStorage.setItem('selectedSeason', JSON.stringify(data));
                 }
             });
         });
+        
 
         /* Listen for external season changes (e.g., from world.js) */
         if (window.seasonManager) {
@@ -172,12 +215,32 @@ window.addEventListener('forestSceneReady', updateAmbientAudio);
 
         /* Retry once scene is ready */
         window.addEventListener('forestSceneReady', () => {
-            if (window.seasonManager) {
-                window.seasonManager.onSeasonChange(name => updateSeasonActive(name));
+        if (window.seasonManager) {
+            const saved = getStoredSeason(); 
+
+            if (saved) {
+                window.seasonManager.setSeason(saved);
+                updateSeasonActive(saved);
+            } else {
                 updateSeasonActive(window.seasonManager.currentSeason);
-                updateAmbientAudio();
             }
-        }, { once: true });
+
+            window.seasonManager.onSeasonChange(name => {
+            updateSeasonActive(name);
+            updateAmbientAudio(); // update at the RIGHT moment
+        });
+
+            // 🔥 CRITICAL FIX: Re-apply AFTER everything settles
+            setTimeout(() => {
+                const savedAgain = getStoredSeason();
+                if (savedAgain && window.seasonManager.currentSeason !== savedAgain) {
+                    window.seasonManager.setSeason(savedAgain);
+                    updateSeasonActive(savedAgain);
+                    updateAmbientAudio();
+                }
+            }, 300); // small delay fixes race condition
+        }
+    }, { once: true });
     }
 
     /* ── Contact Form ────────────────────────────────────── */

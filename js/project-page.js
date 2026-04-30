@@ -2,11 +2,42 @@
 (function () {
   // --- Utility: Get season and theme from localStorage ---
   function getSeason() {
-    return localStorage.getItem('season') || 'spring';
+  const raw = localStorage.getItem('selectedSeason');
+  if (!raw) return 'spring';
+
+  try {
+    const data = JSON.parse(raw);
+
+    if (Date.now() > data.expires) {
+      localStorage.removeItem('selectedSeason');
+      return 'spring';
+    }
+
+    return data.season || 'spring';
+  } catch {
+    localStorage.removeItem('selectedSeason');
+    return 'spring';
   }
-  function getNightMode() {
-    return localStorage.getItem('nightMode') === 'true';
+}
+
+ function getNightMode() {
+  const raw = localStorage.getItem('timeOfDay');
+  if (!raw) return false;
+
+  try {
+    const data = JSON.parse(raw);
+
+    if (Date.now() > data.expires) {
+      localStorage.removeItem('timeOfDay');
+      return false;
+    }
+
+    return !!data.isNight;
+  } catch {
+    localStorage.removeItem('timeOfDay');
+    return false;
   }
+}
 
   // --- Apply theme classes to body ---
   function applyTheme() {
