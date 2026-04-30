@@ -23,6 +23,14 @@
             night:'audio/winter_forest_night.mp3'
         }
     };
+
+    function initAudioOnLoad() {
+    const season = window.seasonManager?.currentSeason || getSeason();
+
+    if (!audioOn) return;
+
+    updateAmbientAudio();
+}
     
 
     /* ── Day / Night Toggle ─────────────────────────────── */
@@ -65,6 +73,32 @@ audioEl.volume = 0.35;
 
 let audioOn = false;
 
+const savedAudio = localStorage.getItem('audioOn');
+if (savedAudio !== null) {
+    audioOn = JSON.parse(savedAudio);
+
+    // sync icons immediately
+    if (audioOn) {
+        soundOnIcon?.classList.remove('hidden');
+        soundOffIcon?.classList.add('hidden');
+    } else {
+        soundOnIcon?.classList.add('hidden');
+        soundOffIcon?.classList.remove('hidden');
+    }
+}
+
+if (audioOn) {
+    const tryStartAudio = () => {
+        if (window.seasonManager && window.forestScene) {
+            updateAmbientAudio();
+        } else {
+            setTimeout(tryStartAudio, 100);
+        }
+    };
+
+    tryStartAudio();
+}
+
 // Get current season
 function getSeason() {
     if (window.seasonManager?.currentSeason) {
@@ -105,27 +139,36 @@ function updateAmbientAudio() {
 // Button click
 if (audioBtn) {
     audioBtn.addEventListener('click', () => {
-        audioOn = !audioOn;
+    audioOn = !audioOn;
 
-        if (audioOn) {
-            updateAmbientAudio();
-            soundOnIcon?.classList.remove('hidden');
-            soundOffIcon?.classList.add('hidden');
-        } else {
-            audioEl.pause();
-            soundOnIcon?.classList.add('hidden');
-            soundOffIcon?.classList.remove('hidden');
-        }
+    // 💾 SAVE STATE
+    localStorage.setItem('audioOn', JSON.stringify(audioOn));
 
-        audioBtn.setAttribute(
-            'title',
-            audioOn ? 'Mute Forest Sounds' : 'Unmute Forest Sounds'
-        );
-    });
+    if (audioOn) {
+        updateAmbientAudio();
+        soundOnIcon?.classList.remove('hidden');
+        soundOffIcon?.classList.add('hidden');
+    } else {
+        audioEl.pause();
+        soundOnIcon?.classList.add('hidden');
+        soundOffIcon?.classList.remove('hidden');
+    }
+
+    audioBtn.setAttribute(
+        'title',
+        audioOn ? 'Mute Forest Sounds' : 'Unmute Forest Sounds'
+    );
+});
 }
 
 // Sync when scene loads
-window.addEventListener('forestSceneReady', updateAmbientAudio);
+window.addEventListener('forestSceneReady', () => {
+    // ensure correct season audio is ready
+    if (audioOn) {
+        updateAmbientAudio();
+    }
+});
+
 
 
     /* ── Smooth Scroll for Anchor Links ─────────────────── */
@@ -182,30 +225,25 @@ window.addEventListener('forestSceneReady', updateAmbientAudio);
             });
         }
 
-        seasonBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                const s = btn.dataset.season;
-                if (window.seasonManager && !window.seasonManager.isTransitioning) {
-                    window.seasonManager.setSeason(s);
-                    updateSeasonActive(s);
+      seasonBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const s = btn.dataset.season;
 
-                    // If audio is on, update the ambient track immediately to match the new season
-                    // if (audioOn) {
-                    //     updateAmbientAudio();
-                    // }
-                    // save the selected season to localStorage so it persists across reloads
-                    
-                    // set to expire in 30 days 
-                    const data = {
-                        season: s, 
-                        expires: Date.now() + (30 * 24 * 60 * 60 * 1000)
+            if (window.seasonManager && !window.seasonManager.isTransitioning) {
+                window.seasonManager.setSeason(s);
+                updateSeasonActive(s);
 
-                    }
-                    localStorage.setItem('selectedSeason', JSON.stringify(data));
-                }
-            });
+                // 🔥 ADD THIS LINE (instant audio fix)
+                updateAmbientAudio();
+
+                localStorage.setItem('selectedSeason', JSON.stringify({
+                    season: s,
+                    expires: Date.now() + (30 * 24 * 60 * 60 * 1000)
+                }));
+            }
         });
-        
+    });
+            
 
         /* Listen for external season changes (e.g., from world.js) */
         if (window.seasonManager) {
@@ -215,32 +253,45 @@ window.addEventListener('forestSceneReady', updateAmbientAudio);
 
         /* Retry once scene is ready */
         window.addEventListener('forestSceneReady', () => {
-        if (window.seasonManager) {
-            const saved = getStoredSeason(); 
+    if (!window.seasonManager) return;
 
-            if (saved) {
-                window.seasonManager.setSeason(saved);
-                updateSeasonActive(saved);
-            } else {
-                updateSeasonActive(window.seasonManager.currentSeason);
-            }
+    // 1. RESTORE SEASON FIRST (authoritative source)
+    const savedSeason = getStoredSeason();
+    const season = savedSeason || window.seasonManager.currentSeason;
 
-            window.seasonManager.onSeasonChange(name => {
+    window.seasonManager.setSeason(season);
+    updateSeasonActive(season);
+
+    // 2. ENSURE AUDIO IS RESTORED STATEFULLY
+    const savedAudio = localStorage.getItem('audioOn');
+    audioOn = savedAudio ? JSON.parse(savedAudio) : false;
+
+    // sync icons
+    if (audioOn) {
+        soundOnIcon?.classList.remove('hidden');
+        soundOffIcon?.classList.add('hidden');
+    } else {
+        soundOnIcon?.classList.add('hidden');
+        soundOffIcon?.classList.remove('hidden');
+    }
+
+    // 3. BIND ONCE
+    if (!window.__seasonAudioBound) {
+        window.__seasonAudioBound = true;
+
+        window.seasonManager.onSeasonChange((name) => {
             updateSeasonActive(name);
-            updateAmbientAudio(); // update at the RIGHT moment
+            updateAmbientAudio();
         });
+    }
 
-            // 🔥 CRITICAL FIX: Re-apply AFTER everything settles
-            setTimeout(() => {
-                const savedAgain = getStoredSeason();
-                if (savedAgain && window.seasonManager.currentSeason !== savedAgain) {
-                    window.seasonManager.setSeason(savedAgain);
-                    updateSeasonActive(savedAgain);
-                    updateAmbientAudio();
-                }
-            }, 300); // small delay fixes race condition
-        }
-    }, { once: true });
+    // 4. 🔥 ONLY START AUDIO AFTER EVERYTHING IS READY
+    if (audioOn) {
+        requestAnimationFrame(() => {
+            updateAmbientAudio();
+        });
+    }
+}, { once: true });
     }
 
     /* ── Contact Form ────────────────────────────────────── */
