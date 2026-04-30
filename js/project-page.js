@@ -1,24 +1,35 @@
 // project-page.js — Handles theme/season for project detail pages
 (function () {
+
+  function getRealSeason() {
+  const m = new Date().getMonth(); // 0–11
+
+  if (m >= 2 && m <= 4) return 'spring';  // Mar–May
+  if (m >= 5 && m <= 7) return 'summer';  // Jun–Aug
+  if (m >= 8 && m <= 10) return 'fall';   // Sep–Nov
+  return 'winter';                        // Dec–Feb
+}
+
   // --- Utility: Get season and theme from localStorage ---
   function getSeason() {
   const raw = localStorage.getItem('selectedSeason');
-  if (!raw) return 'spring';
+  if (!raw) return getRealSeason();
 
   try {
     const data = JSON.parse(raw);
 
     if (Date.now() > data.expires) {
       localStorage.removeItem('selectedSeason');
-      return 'spring';
+      return getRealSeason();
     }
 
-    return data.season || 'spring';
+    return data.season || getRealSeason();
   } catch {
     localStorage.removeItem('selectedSeason');
-    return 'spring';
+    return getRealSeason();
   }
 }
+
 
  function getNightMode() {
   const raw = localStorage.getItem('timeOfDay');

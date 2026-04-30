@@ -8,19 +8,19 @@
     // get season from local storage if it is there and not expired
     function getStoredSeason() {
     const raw = localStorage.getItem('selectedSeason');
-    if (!raw) return null;
+    if (!raw) return detectSeason();
 
     try {
         const data = JSON.parse(raw);
 
         if (Date.now() > data.expires) {
             localStorage.removeItem('selectedSeason');
-            return null;
+            return detectSeason();
         }
 
         return data.season;
     } catch {
-        return null;
+        return detectSeason();
     }
 }
 
