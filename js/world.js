@@ -38,23 +38,145 @@
         // Expose a no-op public API so ui.js does not throw
         window.forestScene  = { toggleDayNight: function(){}, setRain: function(){}, get isNight(){ return false; }, get introDone(){ return true; } };
         window.seasonManager = { setSeason: function(){}, onSeasonChange: function(){}, get currentSeason(){ return 'spring'; }, get isTransitioning(){ return false; } };
-        window.grassSystem   = { get tier(){ return 'LOW'; }, setWind: function(){} };
+        // window.grassSystem   = { get tier(){ return 'LOW'; }, setWind: function(){} };
+        window.grassSystem = window.grassSystem || {};
+
+        window.grassSystem.setDensity = function (count) {
+            this.targetDensity = count;
+
+            if (this.particles) {
+                this.particles.count = count;
+                this.particles.needsUpdate = true;
+            }
+        };
         return;
     }
 
     /* ─────────────────────────────────────────────────────────
        T007: Performance Tier Detection
     ───────────────────────────────────────────────────────── */
-    const CPU  = navigator.hardwareConcurrency || 2;
-    const DPR  = window.devicePixelRatio || 1;
-    const TIER = (CPU >= 4 && DPR < 2) ? 'HIGH' : (CPU >= 2 && DPR < 3) ? 'MED' : 'LOW';
+    const CPU = navigator.hardwareConcurrency || 2;
+    const DPR = window.devicePixelRatio || 1;
+    const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    let TIER = 'LOW';
+    if (!REDUCED_MOTION) {
+        if (CPU >= 8 && DPR <= 1.5) TIER = 'HIGH';
+        else if (CPU >= 4 && DPR <= 2) TIER = 'MED';
+    }
+
+    // FPS monitoring 
+    let fps = 60;
+let lastFrame = performance.now();
+let frameCount = 0;
+let fpsTimer = performance.now();
+
+function monitorFPS(now) {
+    frameCount++;
+
+    if (now - fpsTimer >= 1000) {
+        fps = frameCount;
+        frameCount = 0;
+        fpsTimer = now;
+
+        adaptivePerformanceControl();
+    }
+
+    lastFrame = now;
+    requestAnimationFrame(monitorFPS);
+}
+
+requestAnimationFrame(monitorFPS);
+
+
+// adaptive performance control based on the FPS 
+function adaptivePerformanceControl() {
+    // downgrade if FPS drops
+    if (fps < 30 && TIER !== 'LOW') {
+        TIER = 'LOW';
+        applyPerformanceTier();
+    }
+
+    // upgrade if stable
+    else if (fps > 50 && TIER === 'LOW' && CPU >= 4) {
+        TIER = 'MED';
+        applyPerformanceTier();
+    }
+}
+
+// centralizing performance settings 
+function applyPerformanceTier() {
+    const settings = getTierSettings(TIER);
+
+    if (renderer) {
+        renderer.setPixelRatio(settings.PIXEL_RATIO);
+        renderer.shadowMap.enabled = settings.SHADOWS;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    }
+
+    if (window.grassSystem && typeof window.grassSystem.setDensity === 'function') {
+    window.grassSystem.setDensity(settings.GRASS_COUNT);
+    }
+
+    window.__PERF_SETTINGS = settings;
+}
+
+// defining tier config:
+function getTierSettings(tier) {
+    const DPR = window.devicePixelRatio || 1;
+
+    if (tier === 'HIGH') {
+        return {
+            SHADOW_SIZE: 2048,
+            PIXEL_RATIO: Math.min(DPR, 2),
+            GRASS_COUNT: 8000,
+            PART_MAX: 700,
+            SHADOWS: true
+        };
+    }
+
+    if (tier === 'MED') {
+        return {
+            SHADOW_SIZE: 1024,
+            PIXEL_RATIO: Math.min(DPR, 1.5),
+            GRASS_COUNT: 3000,
+            PART_MAX: 350,
+            SHADOWS: true
+        };
+    }
+
+    return {
+        SHADOW_SIZE: 512,
+        PIXEL_RATIO: 1,
+        GRASS_COUNT: 1000,
+        PART_MAX: 150,
+        SHADOWS: false
+    };
+}
+
+// fixing webgl init:
+renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: TIER !== 'LOW',
+    powerPreference: 'high-performance',
+    alpha: false,
+    stencil: false,
+    depth: true
+});
+
+// adding tab visibility performance drop 
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        TIER = 'LOW';
+        applyPerformanceTier();
+    }
+});
 
     const SHADOW_SIZE   = TIER === 'HIGH' ? 2048 : TIER === 'MED' ? 1024 : 512;
     const PIXEL_RATIO   = TIER === 'HIGH' ? Math.min(DPR, 2) : TIER === 'MED' ? Math.min(DPR, 1.5) : 1;
     const GRASS_COUNT   = TIER === 'HIGH' ? 8000  : TIER === 'MED' ? 3000  : 1000;
     const PART_MAX      = TIER === 'HIGH' ? 700   : TIER === 'MED' ? 350   : 150;
 
-    const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     /* Shared ground height function — keeps grass Y flush with terrain */
     function groundHeightAt(x, z) {
@@ -399,75 +521,271 @@
     scene.add(starField);
 
     /* ─────────────────────────────────────────────────────────
-       AURORA BOREALIS (Winter night)
-    ───────────────────────────────────────────────────────── */
-    const auroraUniforms = {
-        uTime:      { value: 0 },
-        uIntensity: { value: 0 }
-    };
-    const auroraGeo = new THREE.PlaneGeometry(800, 140, 30, 12);
-    const auroraMat = new THREE.ShaderMaterial({
-        uniforms: auroraUniforms,
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        fog: false,
-        vertexShader: `
-            uniform float uTime;
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                vec3 p = position;
-                p.y += sin(uv.x * 5.0 + uTime * 0.25) * 10.0
-                     + sin(uv.x * 2.2 - uTime * 0.18) * 14.0;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
-            }`,
-        fragmentShader: `
-            uniform float uTime;
-            uniform float uIntensity;
-            varying vec2  vUv;
-            void main() {
-                float wave  = sin(vUv.x * 7.0 + uTime * 0.5) * 0.08
-                            + sin(vUv.x * 2.8 - uTime * 0.35) * 0.12;
-                float band  = smoothstep(0.18 + wave, 0.42 + wave, vUv.y)
-                            * smoothstep(1.0,  0.52 + wave, vUv.y);
-                vec3 green  = vec3(0.0, 0.95, 0.45);
-                vec3 teal   = vec3(0.0, 0.75, 0.85);
-                vec3 violet = vec3(0.5, 0.05, 0.9);
-                float mx    = fract(vUv.x + sin(vUv.x * 3.0 + uTime * 0.2) * 0.25);
-                vec3  col   = mx < 0.5 ? mix(green, teal, mx * 2.0) : mix(teal, violet, (mx - 0.5) * 2.0);
-                float shimmer = 0.65 + sin(uTime * 1.6 + vUv.x * 10.0) * 0.35;
-                gl_FragColor  = vec4(col, band * 0.55 * uIntensity * shimmer);
-            }`
-    });
-    const auroraMesh = new THREE.Mesh(auroraGeo, auroraMat);
-    auroraMesh.position.set(0, 75, -220);
-    auroraMesh.rotation.x = -0.18;
-    auroraMesh.visible = false;
-    scene.add(auroraMesh);
+   AURORA BOREALIS (Winter night) 
+───────────────────────────────────────────────────────── */
+
+const auroraUniforms = {
+    uTime:      { value: 0 },
+    uIntensity: { value: 0 }
+};
+
+const auroraGeo = new THREE.PlaneGeometry(800, 140, 60, 20);
+
+const auroraMat = new THREE.ShaderMaterial({
+    uniforms: auroraUniforms,
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+    side: THREE.DoubleSide,
+    fog: false,
+
+    vertexShader: `
+        uniform float uTime;
+        varying vec2 vUv;
+
+        // subtle 2D vertex warping for curtain motion
+        void main() {
+            vUv = uv;
+
+            vec3 p = position;
+
+            float waveX = sin(uv.x * 4.0 + uTime * 0.25);
+            float waveY = sin(uv.y * 3.0 - uTime * 0.18);
+
+            p.y += waveX * 12.0 + waveY * 6.0;
+            p.x += sin(uv.y * 2.0 + uTime * 0.15) * 4.0;
+
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        }
+    `,
+
+    fragmentShader: `
+        uniform float uTime;
+        uniform float uIntensity;
+        varying vec2 vUv;
+
+        // cheap pseudo-noise (replaces fract/stripe artifacts)
+        float noise(vec2 p) {
+            return sin(p.x * 3.0 + uTime * 0.3)
+                 * sin(p.y * 2.0 - uTime * 0.25)
+                 * 0.5 + 0.5;
+        }
+
+        void main() {
+
+            // 2D turbulence field (fixes vertical striping completely)
+            vec2 uv = vUv;
+
+            float n1 = noise(uv * 3.0);
+            float n2 = noise(uv * 6.0 + n1 * 0.5);
+            float n3 = noise(uv * 12.0 - uTime * 0.2);
+
+            float turbulence = (n1 * 0.5 + n2 * 0.3 + n3 * 0.2);
+
+            // flowing vertical curtain shape
+            float curtain = smoothstep(0.2, 0.6, uv.y + turbulence * 0.25)
+                          - smoothstep(0.65, 1.0, uv.y + turbulence * 0.2);
+
+            // soft horizontal drift (no repetition bands)
+            float drift = sin(uv.x * 2.0 + turbulence * 2.0 + uTime * 0.4) * 0.5 + 0.5;
+
+            // aurora colors
+            vec3 green  = vec3(0.0, 0.95, 0.55);
+            vec3 teal   = vec3(0.0, 0.75, 0.85);
+            vec3 violet = vec3(0.65, 0.25, 1.0);
+
+            // smooth gradient blend (no hard splits)
+            float grad = uv.y + turbulence * 0.2;
+
+            vec3 col = mix(green, teal, smoothstep(0.0, 0.6, grad));
+            col = mix(col, violet, smoothstep(0.4, 1.0, grad));
+
+            // shimmer like solar activity
+            float shimmer = 0.6 + 0.4 * sin(uTime * 1.8 + uv.x * 5.0);
+
+            float alpha = curtain * drift * shimmer * uIntensity * 0.75;
+
+            gl_FragColor = vec4(col, alpha);
+        }
+    `
+});
+
+const auroraMesh = new THREE.Mesh(auroraGeo, auroraMat);
+auroraMesh.position.set(0, 75, -220);
+auroraMesh.rotation.x = -0.18;
+auroraMesh.visible = false;
+scene.add(auroraMesh);
+
+class SimplexNoise {
+    constructor() {
+        this.grad3 = [
+            [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
+            [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
+            [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]
+        ];
+        this.p = Array.from({length: 256}, () => Math.floor(Math.random() * 256));
+        this.perm = new Array(512);
+        for (let i = 0; i < 512; i++) {
+            this.perm[i] = this.p[i & 255];
+        }
+    }
+
+    dot(g, x, y) {
+        return g[0]*x + g[1]*y;
+    }
+
+    noise(xin, yin) {
+        let n0, n1, n2;
+
+        const F2 = 0.5 * (Math.sqrt(3.0) - 1.0);
+        const s = (xin + yin) * F2;
+        const i = Math.floor(xin + s);
+        const j = Math.floor(yin + s);
+
+        const G2 = (3.0 - Math.sqrt(3.0)) / 6.0;
+        const t = (i + j) * G2;
+        const X0 = i - t;
+        const Y0 = j - t;
+
+        const x0 = xin - X0;
+        const y0 = yin - Y0;
+
+        let i1, j1;
+        if (x0 > y0) { i1 = 1; j1 = 0; }
+        else { i1 = 0; j1 = 1; }
+
+        const x1 = x0 - i1 + G2;
+        const y1 = y0 - j1 + G2;
+        const x2 = x0 - 1.0 + 2.0 * G2;
+        const y2 = y0 - 1.0 + 2.0 * G2;
+
+        const ii = i & 255;
+        const jj = j & 255;
+
+        const gi0 = this.perm[ii + this.perm[jj]] % 12;
+        const gi1 = this.perm[ii + i1 + this.perm[jj + j1]] % 12;
+        const gi2 = this.perm[ii + 1 + this.perm[jj + 1]] % 12;
+
+        let t0 = 0.5 - x0*x0 - y0*y0;
+        if (t0 < 0) n0 = 0.0;
+        else {
+            t0 *= t0;
+            n0 = t0 * t0 * this.dot(this.grad3[gi0], x0, y0);
+        }
+
+        let t1 = 0.5 - x1*x1 - y1*y1;
+        if (t1 < 0) n1 = 0.0;
+        else {
+            t1 *= t1;
+            n1 = t1 * t1 * this.dot(this.grad3[gi1], x1, y1);
+        }
+
+        let t2 = 0.5 - x2*x2 - y2*y2;
+        if (t2 < 0) n2 = 0.0;
+        else {
+            t2 *= t2;
+            n2 = t2 * t2 * this.dot(this.grad3[gi2], x2, y2);
+        }
+
+        return 70.0 * (n0 + n1 + n2);
+    }
+}
+
+const simplex = new SimplexNoise();
 
     /* ─────────────────────────────────────────────────────────
        GROUND
     ───────────────────────────────────────────────────────── */
-    const gGeo = new THREE.PlaneGeometry(500, 500, 60, 60);
-    const gPos = gGeo.attributes.position;
-    for (let i = 0; i < gPos.count; i++) {
-        const x = gPos.getX(i), z = gPos.getZ(i);
-        const h = Math.sin(x * 0.07) * 1.8
-                + Math.cos(z * 0.05) * 1.4
-                + Math.sin(x * 0.18 + z * 0.12) * 0.6
-                + Math.sin(x * 0.4  + z * 0.35) * 0.2;
-        gPos.setY(i, h);
-    }
-    gGeo.computeVertexNormals();
+   const gGeo = new THREE.PlaneGeometry(500, 500, 120, 120);
+const gPos = gGeo.attributes.position;
 
-    const ground = new THREE.Mesh(gGeo, new THREE.MeshStandardMaterial({
-        color: SC.groundColor, roughness: 0.96, metalness: 0
-    }));
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -2.5;
-    ground.receiveShadow = true;
-    scene.add(ground);
+// better terrain noise (break repetition)
+for (let i = 0; i < gPos.count; i++) {
+
+    const x = gPos.getX(i);
+    const z = gPos.getZ(i);
+
+    // base terrain (mountains + hills)
+    let h =
+        simplex.noise(x * 0.008, z * 0.008) * 8.0 +   // big mountains
+        simplex.noise(x * 0.02,  z * 0.02)  * 3.0 +   // hills
+        simplex.noise(x * 0.06,  z * 0.06)  * 1.0;    // micro detail
+
+    // erosion pass (smooth valleys naturally)
+    const erosion =
+        Math.abs(simplex.noise(x * 0.015, z * 0.015));
+
+    h -= erosion * erosion * 2.5;
+
+    gPos.setY(i, h);
+}
+gGeo.computeVertexNormals();
+
+
+function applySeasonalTerrain() {
+
+    const season = window.seasonManager?.currentSeason || 'spring';
+
+    let factor = 1;
+
+    if (season === 'winter') factor = 0.7; // compressed snow terrain
+    if (season === 'fall')   factor = 0.95; // slightly softened
+    if (season === 'summer') factor = 1.0;
+    if (season === 'spring') factor = 1.05; // slightly more lush
+
+    const pos = gGeo.attributes.position;
+
+    for (let i = 0; i < pos.count; i++) {
+        const y = pos.getY(i);
+        pos.setY(i, y * factor);
+    }
+
+    pos.needsUpdate = true;
+    gGeo.computeVertexNormals();
+}
+applySeasonalTerrain();
+
+// vertex color variation (CRUCIAL for realism)
+const colors = [];
+const base = new THREE.Color();
+
+for (let i = 0; i < gPos.count; i++) {
+    const x = gPos.getX(i);
+    const z = gPos.getZ(i);
+
+    const noise =
+        (Math.sin(x * 0.1) + Math.cos(z * 0.1) + Math.sin((x + z) * 0.05)) * 0.33 + 0.5;
+
+    base.set(SC.groundColor);
+
+    // subtle natural breakup
+    base.offsetHSL(
+        0,
+        (noise - 0.5) * 0.08,
+        (noise - 0.5) * 0.12
+    );
+
+    colors.push(base.r, base.g, base.b);
+}
+
+gGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+// improved material
+const ground = new THREE.Mesh(
+    gGeo,
+    new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 1.0,
+        metalness: 0,
+        flatShading: false,
+        color: 0xffffff // vertex colors fully control it
+    })
+);
+
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -2.5;
+ground.receiveShadow = true;
+scene.add(ground);
 
     /* ─────────────────────────────────────────────────────────
        TREES
