@@ -1502,6 +1502,8 @@ function getStoredTimeOfDay() {
     /* ─────────────────────────────────────────────────────────
        LOADING & INTRO ANIMATION (T023–T026)
     ───────────────────────────────────────────────────────── */
+    applyLoadingScreenTheme();
+    
     const progressEl = document.getElementById('loading-progress');
     let loadVal = 0;
     const loadInterval = setInterval(() => {
@@ -1514,6 +1516,27 @@ function getStoredTimeOfDay() {
         }
         if (progressEl) progressEl.style.width = Math.min(loadVal, 99) + '%';
     }, 120);
+
+    function applyLoadingScreenTheme() {
+    const ls = document.getElementById('loading-screen');
+    if (!ls) return;
+
+    const season = currentSeason || 'spring';
+    const sc = SEASONS[season];
+
+    if (!sc) return;
+
+    const top = `#${new THREE.Color(sc.skyTop).getHexString()}`;
+    const bottom = `#${new THREE.Color(sc.skyBottom).getHexString()}`;
+
+    ls.style.background = `
+        linear-gradient(
+            180deg,
+            ${top} 0%,
+            ${bottom} 100%
+        )
+    `;
+}
 
     function doReveal() {
         const ls = document.getElementById('loading-screen');
