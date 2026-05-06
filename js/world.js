@@ -24,6 +24,76 @@
     }
 }
 
+/* T055: Audio Fix — Resume AudioContext on first interaction */
+function initAudioResume() {
+    const resumeAudio = () => {
+        if (THREE.AudioContext.getContext().state === 'suspended') {
+            THREE.AudioContext.getContext().resume().then(() => {
+                console.log("Audio Context Resumed!");
+                // If you have a global audio object, play it here:
+                // if (window.bgAmbience) window.bgAmbience.play();
+            });
+        }
+        // Remove listeners once audio is unlocked
+        window.removeEventListener('click', resumeAudio);
+        window.removeEventListener('keydown', resumeAudio);
+        window.removeEventListener('touchstart', resumeAudio);
+    };
+
+    window.addEventListener('click', resumeAudio);
+    window.addEventListener('keydown', resumeAudio);
+    window.addEventListener('touchstart', resumeAudio);
+}
+
+// Call this immediately
+initAudioResume();
+
+// procedural asset loader which generates textures for fireflies and snow sot they don't look just like a bunch of squares 
+// Helper to create soft circular textures without external files
+function createCircleTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.2, 'rgba(255,255,255,0.8)');
+    grad.addColorStop(0.5, 'rgba(255,255,255,0.2)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(canvas);
+}
+//const glowTexture = createCircleTexture();
+
+// It draws a generic organic "leaf" shape onto a canvas
+function createOrganicTexture(type = 'leaf') {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128; canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff'; // White for the alpha mask
+
+    if (type === 'leaf') {
+        // Draw a pointed leaf shape
+        ctx.beginPath();
+        ctx.moveTo(64, 10);
+        ctx.bezierCurveTo(20, 40, 20, 90, 64, 118); // Left side
+        ctx.bezierCurveTo(108, 90, 108, 40, 64, 10); // Right side
+        ctx.fill();
+    } else {
+        // Draw a rounded petal shape
+        ctx.beginPath();
+        ctx.moveTo(64, 110);
+        ctx.bezierCurveTo(20, 80, 20, 20, 64, 40);
+        ctx.bezierCurveTo(108, 20, 108, 80, 64, 110);
+        ctx.fill();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    return tex;
+}
+
+const leafTexture = createOrganicTexture('leaf');
+const petalTexture = createOrganicTexture('petal');
+
     /* ─────────────────────────────────────────────────────────
        T005: WebGL Fallback
     ───────────────────────────────────────────────────────── */
@@ -849,146 +919,152 @@ scene.add(ground);
         scene.add(rock);
     }
 
-    /* ─────────────────────────────────────────────────────────
-       T043–T047: Creek (replaces flat water lake)
-    ───────────────────────────────────────────────────────── */
-    /* Creek spans from far horizon ahead (-z) through the scene to camera start */
-    const CREEK_Y = -0.8;  /* above ground level so terrain bumps don't block it */
-    const creekControlPoints = [
-        new THREE.Vector3(-10, CREEK_Y, -320),
-        new THREE.Vector3(-16, CREEK_Y, -250),
-        new THREE.Vector3(-8,  CREEK_Y, -180),
-        new THREE.Vector3(-14, CREEK_Y, -120),
-        new THREE.Vector3(-9,  CREEK_Y, -70),
-        new THREE.Vector3(-13, CREEK_Y, -20),
-        new THREE.Vector3(-7,  CREEK_Y,  20),
-        new THREE.Vector3(-11, CREEK_Y,  55),
-        new THREE.Vector3(-6,  CREEK_Y,  80),
-    ];
-    const creekCurve   = new THREE.CatmullRomCurve3(creekControlPoints);
-    const creekSamples = creekCurve.getPoints(120);
-    const creekWidth   = 4.5;
+  /* ─────────────────────────────────────────────────────────
+    T043–T047: REALISTIC SEASONAL CREEK (FIXED)
+───────────────────────────────────────────────────────── */
 
-    function buildCreekGeometry(samples, width) {
-        const verts = [], uvs = [], indices = [];
-        const up = new THREE.Vector3(0, 1, 0);
-        for (let i = 0; i < samples.length; i++) {
-            const t   = i / (samples.length - 1);
-            const dir = i < samples.length - 1
-                ? new THREE.Vector3().subVectors(samples[i + 1], samples[i]).normalize()
-                : new THREE.Vector3().subVectors(samples[i], samples[i - 1]).normalize();
-            const right = new THREE.Vector3().crossVectors(dir, up).normalize();
-            const L = samples[i].clone().addScaledVector(right, -width / 2);
-            const R = samples[i].clone().addScaledVector(right,  width / 2);
-            verts.push(L.x, L.y, L.z, R.x, R.y, R.z);
-            uvs.push(0, t, 1, t);
-            if (i < samples.length - 1) {
-                const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
-                indices.push(a, b, c, b, d, c);
-            }
-        }
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
-        geo.setAttribute('uv',       new THREE.BufferAttribute(new Float32Array(uvs),   2));
-        geo.setIndex(indices);
-        geo.computeVertexNormals();
-        return geo;
+// HELPER FUNCTION: Generates the 3D path for the river
+function buildCreekGeometry(points, width) {
+    const geo = new THREE.BufferGeometry();
+    const vertices = [];
+    const uvs = [];
+    const halfWidth = width / 2;
+
+    for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+
+        const dir = new THREE.Vector3().subVectors(p2, p1).normalize();
+        const norm = new THREE.Vector3(-dir.z, 0, dir.x); // Perpendicular to direction
+
+        const v0 = new THREE.Vector3().addVectors(p1, norm.clone().multiplyScalar(-halfWidth));
+        const v1 = new THREE.Vector3().addVectors(p1, norm.clone().multiplyScalar(halfWidth));
+        const v2 = new THREE.Vector3().addVectors(p2, norm.clone().multiplyScalar(-halfWidth));
+        const v3 = new THREE.Vector3().addVectors(p2, norm.clone().multiplyScalar(halfWidth));
+
+        vertices.push(v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
+        vertices.push(v1.x, v1.y, v1.z, v3.x, v3.y, v3.z, v2.x, v2.y, v2.z);
+
+        const t1 = i / points.length;
+        const t2 = (i + 1) / points.length;
+        // UV.y is used for flow; UV.x (0 to 1) is used for edge fading
+        uvs.push(0, t1 * 20.0, 1, t1 * 20.0, 0, t2 * 20.0);
+        uvs.push(1, t1 * 20.0, 1, t2 * 20.0, 0, t2 * 20.0);
     }
 
-    const creekUniforms = {
-        uTime:      { value: 0 },
-        uFlowSpeed: { value: 0.14 },
-        uColor:     { value: new THREE.Color(SC.creekColor) }
-    };
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geo.computeVertexNormals();
+    return geo;
+}
 
-    const creekMat = new THREE.ShaderMaterial({
-        uniforms: creekUniforms,
-        transparent: true,
-        side: THREE.DoubleSide,
-        polygonOffset: true,
-        polygonOffsetFactor: -2,
-        polygonOffsetUnits: -2,
-        vertexShader: `
-            uniform float uTime;
-            varying vec2  vUv;
-            void main() {
-                vUv = uv;
-                vec3 p = position;
-                /* Slow, gentle surface undulation */
-                p.y += sin(uv.x * 5.0  + uTime * 0.38) * 0.045
-                     + cos(uv.y * 3.5  + uTime * 0.28) * 0.032
-                     + sin(uv.x * 10.0 - uTime * 0.52) * 0.014;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
-            }`,
-        fragmentShader: `
-            uniform float uTime;
-            uniform float uFlowSpeed;
-            uniform vec3  uColor;
-            varying vec2  vUv;
+const CREEK_Y = -1.6; 
+const creekControlPoints = [
+    new THREE.Vector3(-10, CREEK_Y, -320), new THREE.Vector3(-16, CREEK_Y, -250),
+    new THREE.Vector3(-8,  CREEK_Y, -180), new THREE.Vector3(-14, CREEK_Y, -120),
+    new THREE.Vector3(-9,  CREEK_Y, -70),  new THREE.Vector3(-13, CREEK_Y, -20),
+    new THREE.Vector3(-7,  CREEK_Y,  20),  new THREE.Vector3(-11, CREEK_Y,  55),
+    new THREE.Vector3(-6,  CREEK_Y,  80),
+];
 
-            float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+const creekCurve   = new THREE.CatmullRomCurve3(creekControlPoints);
+const creekSamples = creekCurve.getPoints(150);
+const creekWidth   = 5.5;
 
-            void main() {
-                float flow = vUv.y * 8.0 - uTime * uFlowSpeed;
+const creekUniforms = {
+    uTime: { value: 0 },
+    uColor: { value: new THREE.Color(SC.creekFrozen ? "#89b4ff" : "#05192d") },
+    uIsFrozen: { value: SC.creekFrozen ? 1.0 : 0.0 }
+};
 
-                /* Scrolling flow lines — soft streaks along the current */
-                float f1 = pow(max(sin(vUv.x * 16.0 + flow * 1.2),       0.0), 5.0) * 0.50;
-                float f2 = pow(max(cos(vUv.x * 10.0 - flow * 0.8 + 1.1), 0.0), 5.0) * 0.30;
-                float flowLines = f1 + f2;
+const creekMat = new THREE.ShaderMaterial({
+    uniforms: {
+        ...creekUniforms,
+        uNightLerp: { value: 0 } // Add this to your uniforms object in world.js
+    },
+    transparent: true,
+    side: THREE.DoubleSide,
+    vertexShader: `
+        varying vec2 vUv;
+        uniform float uTime;
+        void main() {
+            vUv = uv;
+            vec3 p = position;
+            // Fluid motion
+            p.y += sin(uv.y * 8.0 + uTime * 1.2) * 0.04;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        }
+    `,
+    fragmentShader: `
+        varying vec2 vUv;
+        uniform float uTime;
+        uniform vec3 uColor;
+        uniform float uIsFrozen;
+        uniform float uNightLerp;
 
-                /* Caustic shimmer — slow dancing light patches */
-                vec2 cp = vec2(vUv.x * 4.0, flow * 0.30);
-                float c1 = sin(cp.x * 5.2 + uTime * 0.18) * sin(cp.y * 4.8 + uTime * 0.14);
-                float c2 = cos(cp.x * 7.1 - uTime * 0.12) * cos(cp.y * 6.3 + uTime * 0.20);
-                float caustic = pow(max((c1 + c2) * 0.5 + 0.5, 0.0), 3.5) * 0.45;
+        void main() {
+            // 1. ANIME COLOR PALETTE
+            // Day: Bright Teal/Blue | Night: Deep Indigo/Purple
+            vec3 dayDeep   = vec3(0.0, 0.35, 0.5);
+            vec3 dayLight  = vec3(0.1, 0.75, 0.85);
+            vec3 nightDeep = vec3(0.05, 0.05, 0.2);
+            vec3 nightHue  = vec3(0.1, 0.0, 0.3); // Purple tint
 
-                /* Sparkles — travel continuously with the current, smooth fade-in/out */
-                float sparkFlow  = vUv.y * 5.0 - uTime * 0.10;   /* slow scroll */
-                float sparkGen   = floor(uTime * 1.2);            /* new batch every ~0.8 s */
-                vec2  sp         = vec2(floor(vUv.x * 22.0), floor(sparkFlow));
-                float sparkRaw   = step(0.965, hash(sp + sparkGen));
-                /* Smooth crossfade between batches instead of a hard cut */
-                float phase      = fract(uTime * 1.2);
-                float sparkFade  = smoothstep(0.0, 0.35, phase) * smoothstep(1.0, 0.65, phase);
-                float spark      = sparkRaw * sparkFade;
+            vec3 deep = mix(dayDeep, nightDeep, uNightLerp);
+            // Subtle night-time hue shift
+            float hueOsc = sin(uTime * 0.5) * 0.5 + 0.5;
+            vec3 light = mix(dayLight, mix(nightDeep, nightHue, hueOsc), uNightLerp);
 
-                /* Edge foam — frothy white at banks */
-                float edgeL = 1.0 - smoothstep(0.0, 0.14, vUv.x);
-                float edgeR = 1.0 - smoothstep(0.0, 0.14, 1.0 - vUv.x);
-                float foam  = max(edgeL, edgeR);
-                float foamAnim = 0.55 + sin(flow * 1.4 + vUv.x * 6.0) * 0.45;
-                foam = pow(foam, 1.8) * foamAnim;
+            // 2. FOAM STREAKS (The "Painted" Look)
+            float speed = uTime * 1.8;
+            float lines = sin(vUv.y * 50.0 - speed) * 0.5 + 0.5;
+            float mask = sin(vUv.y * 12.0 - speed * 0.6) * sin(vUv.x * 10.0);
+            float foam = step(0.88, lines * mask);
+            
+            // 3. REALISTIC DAYTIME SHIMMER
+            // Uses a high-frequency sparkle that dies out at night
+            float shimmerNoise = sin(vUv.x * 100.0 + uTime * 3.0) * cos(vUv.y * 100.0 - uTime * 2.0);
+            float shimmer = pow(max(0.0, shimmerNoise), 15.0) * (1.0 - uNightLerp);
 
-                /* Depth: darker / more saturated toward center */
-                float depth = smoothstep(0.0, 0.35, vUv.x) * smoothstep(0.0, 0.35, 1.0 - vUv.x);
-                vec3 deepCol    = uColor * 0.6;
-                vec3 shallowCol = uColor * 1.2;
-                vec3 waterCol   = mix(shallowCol, deepCol, depth);
+            // Compose Base
+            float centerDist = abs(vUv.x - 0.5) * 2.0;
+            vec3 baseCol = mix(deep, light, centerDist);
+            
+            // Add Foam and Shimmer
+            vec3 finalColor = mix(baseCol, vec3(1.0), foam * 0.6); // Foam
+            finalColor += shimmer * 0.8; // Sunlight glisten
 
-                vec3 col = waterCol
-                         + flowLines * 0.28
-                         + caustic   * 0.25
-                         + spark     * 1.80
-                         + foam      * vec3(0.85, 0.92, 1.0);
+            // 4. FIX BLACK LINES (Smooth Edge Alpha)
+            // We use edgeFade only for Alpha, not for lerping to black
+            float edgeFade = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
+            
+            if (uIsFrozen > 0.5) {
+                finalColor = mix(vec3(0.8, 0.9, 1.0), vec3(1.0), foam * 0.3);
+            }
 
-                float alpha = 0.82 * smoothstep(0.0, 0.06, vUv.x)
-                                   * smoothstep(0.0, 0.06, 1.0 - vUv.x);
+            gl_FragColor = vec4(finalColor, 0.85 * edgeFade);
+        }
+    `
+});
 
-                gl_FragColor = vec4(col, alpha);
-            }`
-    });
+// 1. Water Mesh
+const creekGeo = buildCreekGeometry(creekSamples, creekWidth);
+const creekMesh = new THREE.Mesh(creekGeo, creekMat);
+scene.add(creekMesh);
 
-    const creekGeo  = buildCreekGeometry(creekSamples, creekWidth);
-    const creekMesh = new THREE.Mesh(creekGeo, creekMat);
-    scene.add(creekMesh);
-
-    /* Ice overlay (Winter) */
-    const iceGeo = buildCreekGeometry(creekSamples, creekWidth * 1.5);
-    const iceMat = new THREE.MeshStandardMaterial({ color: 0xd0eeff, transparent: true, opacity: 0.62, roughness: 0.3, metalness: 0.1 });
-    const iceMesh = new THREE.Mesh(iceGeo, iceMat);
-    iceMesh.position.y = 0.02;
-    iceMesh.visible = SC.creekFrozen;
-    scene.add(iceMesh);
+// 2. Ice Mesh
+const iceGeo = buildCreekGeometry(creekSamples, creekWidth * 1.05);
+const iceMat = new THREE.MeshStandardMaterial({ 
+    color: 0xd0eeff, 
+    transparent: true, 
+    opacity: 0.62, 
+    roughness: 0.05, 
+    metalness: 0.3 
+});
+const iceMesh = new THREE.Mesh(iceGeo, iceMat);
+iceMesh.position.y = 0.08; 
+creekMesh.add(iceMesh);
+iceMesh.visible = SC.creekFrozen;
 
     /* ─────────────────────────────────────────────────────────
        CLOUDS
@@ -1176,26 +1252,73 @@ scene.add(ground);
     /* ─────────────────────────────────────────────────────────
        SEASONAL PARTICLES
     ───────────────────────────────────────────────────────── */
-    const PART_COUNT = SC.particleSize > 0 ? PART_MAX : 0;
-    const pPos = new Float32Array(PART_MAX * 3);
-    const pVel = [];
+    // const PART_COUNT = SC.particleSize > 0 ? PART_MAX : 0;
+    // const pPos = new Float32Array(PART_MAX * 3);
+    // const pVel = [];
+    // for (let i = 0; i < PART_MAX; i++) {
+    //     pPos[i * 3]     = (Math.random() - 0.5) * 80;
+    //     pPos[i * 3 + 1] = Math.random() * 25 + 2;
+    //     pPos[i * 3 + 2] = (Math.random() - 0.5) * 80;
+    //     pVel.push({ vx: (Math.random() - 0.5) * 0.025, vy: -(0.018 + Math.random() * 0.04), vz: (Math.random() - 0.5) * 0.018, wb: Math.random() * Math.PI * 2, ws: 0.015 + Math.random() * 0.03 });
+    // }
+    // const partGeo = new THREE.BufferGeometry();
+    // partGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+    // const particlesMat = new THREE.PointsMaterial({
+    //     color: SC.particleColor,
+    //     size:  SC.particleSize || 0.16,
+    //     transparent: true,
+    //     opacity: SC.particleSize > 0 ? 0.82 : 0,
+    //     sizeAttenuation: true
+    // });
+    // const particles = new THREE.Points(partGeo, particlesMat);
+    // scene.add(particles);
+
+    /* ─────────────────────────────────────────────────────────
+   SEASONAL ASSETS (Instanced Mesh)
+    ───────────────────────────────────────────────────────── */
+    // A simple double-sided plane acts as our leaf/petal asset
+    const leafAssetGeo = new THREE.PlaneGeometry(0.25, 0.25); 
+    const leafAssetMat = new THREE.MeshStandardMaterial({
+    color: SC.particleColor,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: SC.particleSize > 0 ? 0.82 : 0,
+    alphaMap: leafTexture, // This gives it the shape
+    alphaTest: 0.5,        // Prevents weird transparent overlapping artifacts
+    depthWrite: true
+});
+
+    const leafMesh = new THREE.InstancedMesh(leafAssetGeo, leafAssetMat, PART_MAX);
+    const leafMatrices = new THREE.Matrix4();
+    const leafDummy = new THREE.Object3D();
+
+    // Store extra data for rotation physics
+    // const leafData = [];
+    // for (let i = 0; i < PART_MAX; i++) {
+    //     leafData.push({
+    //         rotX: Math.random() * Math.PI,
+    //         rotY: Math.random() * Math.PI,
+    //         rotZ: Math.random() * Math.PI,
+    //         spin: (Math.random() - 0.5) * 0.05
+    //     });
+    // }
+    // Store extra data for position, velocity, and rotation physics
+    const leafData = [];
     for (let i = 0; i < PART_MAX; i++) {
-        pPos[i * 3]     = (Math.random() - 0.5) * 80;
-        pPos[i * 3 + 1] = Math.random() * 25 + 2;
-        pPos[i * 3 + 2] = (Math.random() - 0.5) * 80;
-        pVel.push({ vx: (Math.random() - 0.5) * 0.025, vy: -(0.018 + Math.random() * 0.04), vz: (Math.random() - 0.5) * 0.018, wb: Math.random() * Math.PI * 2, ws: 0.015 + Math.random() * 0.03 });
+        leafData.push({
+            x: (Math.random() - 0.5) * 60,
+            y: 18 + Math.random() * 8,
+            z: (Math.random() - 0.5) * 60,
+            vx: (Math.random() - 0.5) * 0.02,
+            vy: -0.02 - Math.random() * 0.03, // Base falling speed
+            vz: (Math.random() - 0.5) * 0.02,
+            rotX: Math.random() * Math.PI,
+            rotY: Math.random() * Math.PI,
+            rotZ: Math.random() * Math.PI,
+            spin: (Math.random() - 0.5) * 0.05
+        });
     }
-    const partGeo = new THREE.BufferGeometry();
-    partGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-    const particlesMat = new THREE.PointsMaterial({
-        color: SC.particleColor,
-        size:  SC.particleSize || 0.16,
-        transparent: true,
-        opacity: SC.particleSize > 0 ? 0.82 : 0,
-        sizeAttenuation: true
-    });
-    const particles = new THREE.Points(partGeo, particlesMat);
-    scene.add(particles);
+    scene.add(leafMesh);
 
     /* ─────────────────────────────────────────────────────────
        RAIN
@@ -1216,6 +1339,9 @@ scene.add(ground);
     /* ─────────────────────────────────────────────────────────
        FIREFLIES
     ───────────────────────────────────────────────────────── */
+       // Glow Texture 
+    const glowTexture = createCircleTexture(); 
+
     const FF_COUNT = 70;
     const ffPos = new Float32Array(FF_COUNT * 3);
     const ffData = [];
@@ -1227,7 +1353,17 @@ scene.add(ground);
     }
     const ffGeo = new THREE.BufferGeometry();
     ffGeo.setAttribute('position', new THREE.BufferAttribute(ffPos, 3));
-    const ffMat    = new THREE.PointsMaterial({ color: 0x88ff44, size: 0.45, transparent: true, opacity: 0, sizeAttenuation: true });
+    // const ffMat    = new THREE.PointsMaterial({ color: 0x88ff44, size: 0.45, transparent: true, opacity: 0, sizeAttenuation: true });
+    const ffMat = new THREE.PointsMaterial({ 
+    color: 0x88ff44, 
+    size: 0.8, 
+    transparent: true, 
+    opacity: 0, 
+    map: glowTexture, // No more squares!
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true // makes them smaller in the distance 
+});
     const fireflies = new THREE.Points(ffGeo, ffMat);
     scene.add(fireflies);
 
@@ -1311,9 +1447,34 @@ function getStoredTimeOfDay() {
         iceMesh.visible = ns.creekFrozen;
         leafMats.forEach((m, idx) => { m.color.set(ns.leafColors[idx % ns.leafColors.length]); });
         trunkMat.color.set(ns.trunkColor);
-        particlesMat.color.set(ns.particleColor);
-        particlesMat.size    = ns.particleSize || 0.16;
-        particlesMat.opacity = ns.particleSize > 0 ? 0.82 : 0;
+        leafAssetMat.color.set(ns.particleColor);
+        leafAssetMat.opacity = ns.particleSize > 0 ? 0.82 : 0;
+        
+        // Scale the 3D meshes instead of changing point size
+        const pScale = ns.particleSize > 0 ? (ns.particleSize / 0.16) : 1;
+        leafMesh.scale.set(pScale, pScale, pScale);
+
+        // Turn into soft snow for Winter, solid leaves for everything else
+       // Inside your season change functions:
+        if (name === 'spring') {
+            leafAssetMat.alphaMap = petalTexture;
+            leafAssetMat.map = null; // Clear the snow texture
+            leafAssetMat.blending = THREE.NormalBlending;
+        } else if (name === 'fall') {
+            leafAssetMat.alphaMap = leafTexture;
+            leafAssetMat.map = null;
+        } else if (name === 'winter') {
+            leafAssetMat.alphaMap = null; // Snow doesn't need a leaf shape
+            leafAssetMat.map = glowTexture; // Uses the soft circle we made earlier
+            leafAssetMat.blending = THREE.AdditiveBlending;
+        } else {
+            // Summer or others
+            leafAssetMat.alphaMap = null;
+            leafAssetMat.opacity = 0; 
+        }
+
+        leafAssetMat.needsUpdate = true;
+
         document.body.classList.remove('season-spring', 'season-summer', 'season-fall', 'season-winter');
         document.body.classList.add('season-' + name);
         document.documentElement.style.setProperty('--accent', ns.accentCss);
@@ -1350,25 +1511,39 @@ function getStoredTimeOfDay() {
         return;
     }
 
-    /* Fade particles out */
-    gsap.to(particlesMat, {
+   /* Fade 3D particles out */
+    gsap.to(leafAssetMat, {
         opacity: 0,
         duration: 0.3,
         onComplete: () => {
-            particlesMat.color.set(ns.particleColor);
-            particlesMat.size = ns.particleSize || 0.16;
+            // 1. Update Colors & Scale
+            leafAssetMat.color.set(ns.particleColor);
+            const pScale = ns.particleSize > 0 ? (ns.particleSize / 0.16) : 1;
+            leafMesh.scale.set(pScale, pScale, pScale);
 
-            /* Reset particle positions */
+            // Turn into soft snow for Winter, solid leaves for everything else
+            if (name === 'winter') {
+                leafAssetMat.map = glowTexture;
+                leafAssetMat.blending = THREE.AdditiveBlending;
+                leafAssetMat.depthWrite = false;
+            } else {
+                leafAssetMat.map = null;
+                leafAssetMat.blending = THREE.NormalBlending;
+                leafAssetMat.depthWrite = true;
+            }
+            leafAssetMat.needsUpdate = true;
+
+            // 2. Reset particle positions using our new leafData
             for (let i = 0; i < PART_MAX; i++) {
-                pPos[i * 3]     = camera.position.x + (Math.random() - 0.5) * 60;
-                pPos[i * 3 + 1] = camera.position.y + 18 + Math.random() * 8;
-                pPos[i * 3 + 2] = camera.position.z + (Math.random() - 0.5) * 60;
+                const d = leafData[i];
+                d.x = camera.position.x + (Math.random() - 0.5) * 60;
+                d.y = camera.position.y + 18 + Math.random() * 8;
+                d.z = camera.position.z + (Math.random() - 0.5) * 60;
             }
 
-            partGeo.attributes.position.needsUpdate = true;
-
+            // 3. Fade back in if this season has particles
             if (ns.particleSize > 0) {
-                gsap.to(particlesMat, { opacity: 0.82, duration: 0.3 });
+                gsap.to(leafAssetMat, { opacity: 0.82, duration: 0.3 });
             }
         }
     });
@@ -1641,8 +1816,18 @@ function getStoredTimeOfDay() {
        ANIMATION LOOP
     ───────────────────────────────────────────────────────── */
     function animate() {
+        const time = performance.now() * 0.001; 
+
+        // 2. Update the river (Check if it exists first to prevent errors)
+        if (typeof creekMat !== 'undefined' && creekMat.uniforms) {
+            creekMat.uniforms.uTime.value = time;
+        }
+
         requestAnimationFrame(animate);
-        time += 0.016;
+        renderer.render(scene, camera);
+        // time += 0.016;
+        // const time = performance.now() * 0.001; 
+        // if (creekMat) creekMat.uniforms.uTime.value = time;
 
         /* — Scroll-driven camera — */
         if (introDone) {
@@ -1701,23 +1886,52 @@ function getStoredTimeOfDay() {
         grassUniforms.uWindStrength.value = REDUCED_MOTION ? 0.01 : 0.35;
         grassOutlineMat.uniforms.uTime.value = time;
 
-        /* — Seasonal particles — */
-        if (particlesMat.opacity > 0.01) {
-            for (let i = 0; i < PART_MAX; i++) {
-                const v = pVel[i];
-                v.wb += v.ws;
-                pPos[i*3]     += v.vx + Math.sin(v.wb) * 0.008;
-                pPos[i*3 + 1] += v.vy + (currentSeason === 'winter' ? 0 : Math.cos(v.wb * 0.7) * 0.004);
-                pPos[i*3 + 2] += v.vz;
-                if (pPos[i*3 + 1] < -3) {
-                    pPos[i*3]     = camera.position.x + (Math.random() - 0.5) * 60;
-                    pPos[i*3 + 1] = camera.position.y + 18 + Math.random() * 8;
-                    pPos[i*3 + 2] = camera.position.z + (Math.random() - 0.5) * 60;
-                }
-            }
-            partGeo.attributes.position.needsUpdate = true;
-        }
 
+        /* — Seasonal assets (Leaves/Petals/Snow) — */
+        if (leafAssetMat.opacity > 0.01) {
+            const isWinter = currentSeason === 'winter';
+            
+            for (let i = 0; i < PART_MAX; i++) {
+                const d = leafData[i];
+
+                // 1. Update Physics
+                // Add a slight horizontal "drift" based on time to simulate wind
+                const drift = Math.sin(time + i) * (isWinter ? 0.01 : 0.03);
+                d.x += d.vx + drift;
+                d.y += d.vy;
+                d.z += d.vz;
+
+                // 2. Advanced Organic Rotation (The "Tumble")
+                if (isWinter) {
+                    // Snow doesn't flip, it just wobbles
+                    d.rotZ += d.spin * 0.2;
+                } else {
+                    // Leaves and Petals flip and spin on all axes
+                    d.rotX += d.spin;
+                    d.rotY += d.spin * 0.8;
+                    d.rotZ += d.spin * 0.5;
+                }
+
+                // 3. Reset if they hit the ground
+                if (d.y < -3) {
+                    d.x = camera.position.x + (Math.random() - 0.5) * 60;
+                    d.y = camera.position.y + 18 + Math.random() * 8;
+                    d.z = camera.position.z + (Math.random() - 0.5) * 60;
+                }
+
+                // 4. Apply to Matrix
+                leafDummy.position.set(d.x, d.y, d.z);
+                
+                // We add a tiny bit of random scale per leaf for realism
+                const s = 1.0 + Math.sin(i) * 0.2; 
+                leafDummy.scale.set(s, s, s);
+                
+                leafDummy.rotation.set(d.rotX, d.rotY, d.rotZ);
+                leafDummy.updateMatrix();
+                leafMesh.setMatrixAt(i, leafDummy.matrix);
+            }
+            leafMesh.instanceMatrix.needsUpdate = true;
+        }
         /* — Rain — */
         if (rainMat.opacity > 0.01) {
             const ra = rainGeo.attributes.position.array;
@@ -1734,7 +1948,11 @@ function getStoredTimeOfDay() {
         }
 
         /* T047: Creek time */
-        creekUniforms.uTime.value = time;
+       if (typeof creekMat !== 'undefined' && creekMat.uniforms) {
+        creekMat.uniforms.uTime.value = time;
+        // This connects the day/night transition to the water shimmer
+        creekMat.uniforms.uNightLerp.value = nightLerp; 
+    }
 
         /* — Clouds drift — */
         for (let i = 0; i < cloudGroup.children.length; i++) {

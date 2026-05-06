@@ -288,6 +288,7 @@ window.addEventListener('forestSceneReady', () => {
     // 4. 🔥 ONLY START AUDIO AFTER EVERYTHING IS READY
     if (audioOn) {
         requestAnimationFrame(() => {
+            creekUniforms.uTime.value = performance.now() / 1000;
             updateAmbientAudio();
         });
     }
@@ -492,6 +493,7 @@ window.addEventListener('forestSceneReady', () => {
             requestAnimationFrame(() => {
                 ripple.style.transform = 'scale(80)';
                 ripple.style.opacity   = '0';
+                creekUniforms.uTime.value = performance.now() / 1000;
             });
             setTimeout(() => ripple.remove(), 600);
         });
