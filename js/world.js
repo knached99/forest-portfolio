@@ -381,6 +381,13 @@ document.addEventListener('visibilitychange', () => {
     let SC = SEASONS[currentSeason];
     document.body.classList.add('season-' + currentSeason);
 
+    // Detect current time of day 
+    function detectTimeOfDay() {
+        const hours = new Date().getHours(); 
+        return hours >= 18 || hours < 6; 
+    }
+
+
     /* ─────────────────────────────────────────────────────────
        SCENE ATMOSPHERE
     ───────────────────────────────────────────────────────── */
@@ -1243,11 +1250,14 @@ scene.add(ground);
 
     if (storedTime !== null) {
         isNight = storedTime;
+    } else {
+        isNight = detectTimeOfDay(); 
     }
 
     // Sync animation system with loaded value
     nightTarget = isNight ? 1 : 0;
     nightLerp   = nightTarget;
+    document.body.classList.toggle('night-mode', isNight);
 
     const NIGHT = {
         ambientColor: 0x0a1020, ambientInt: 0.12,
@@ -1470,11 +1480,12 @@ function getStoredTimeOfDay() {
 
         const dayIcon   = document.querySelector('.day-icon');
         const nightIcon = document.querySelector('.night-icon');
+        const btn = document.getElementById('day-night-btn');
+        if (isNight) {
         if (dayIcon)   dayIcon.classList.add('hidden');
         if (nightIcon) nightIcon.classList.remove('hidden');
-
-        const btn = document.getElementById('day-night-btn');
         if (btn) btn.setAttribute('title', 'Switch to Day');
+        }
     }
 }
 
@@ -1542,7 +1553,7 @@ function getStoredTimeOfDay() {
         const ls = document.getElementById('loading-screen');
         if (ls) { ls.classList.add('fade-out'); setTimeout(() => { ls.style.display = 'none'; }, 900); }
 
-        applySystemDarkMode();
+     //   applySystemDarkMode();
 
         setTimeout(() => {
             ['main-nav', 'control-strip'].forEach(id => {
