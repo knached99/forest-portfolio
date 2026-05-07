@@ -6,7 +6,7 @@
     <title>Khaled Nached — Developer Portfolio</title>
 
     <!-- T003: Content Security Policy -->
-    <meta http-equiv="Content-Security-Policy" content="
+    <!-- <meta http-equiv="Content-Security-Policy" content="
         default-src 'self';
         script-src  'self'
                     https://cdnjs.cloudflare.com
@@ -21,8 +21,16 @@
         object-src  'none';
         base-uri    'self';
         form-action 'none';
-    ">
-
+    "> -->
+<meta http-equiv="Content-Security-Policy" content="
+    default-src 'self'; 
+    script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; 
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; 
+    font-src 'self' https://fonts.gstatic.com; 
+    connect-src 'self' https://cdnjs.cloudflare.com; 
+    img-src 'self' data:; 
+    media-src 'self';
+">
     <!-- T001: Committed Tailwind build (replaces CDN) -->
     <link rel="stylesheet" href="css/tailwind.css">
 

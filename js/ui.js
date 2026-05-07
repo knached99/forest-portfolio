@@ -5,34 +5,6 @@
 (function () {
     'use strict';
 
-    const audioMap = {
-        spring: {
-            day:  'audio/day_forest.mp3',
-            night:'audio/night_forest.mp3'
-        },
-        summer: {
-            day:  'audio/day_forest.mp3',
-            night:'audio/night_forest.mp3'
-        },
-        fall: {
-            day:  'audio/fall_winter_forest.mp3',
-            night:'audio/night_forest.mp3'
-        },
-        winter: {
-            day:  'audio/fall_winter_forest.mp3',
-            night:'audio/winter_forest_night.mp3'
-        }
-    };
-
-    function initAudioOnLoad() {
-    const season = window.seasonManager?.currentSeason || getSeason();
-
-    if (!audioOn) return;
-
-    updateAmbientAudio();
-}
-    
-
     /* ── Day / Night Toggle ─────────────────────────────── */
     const dayNightBtn = document.getElementById('day-night-btn');
     if (dayNightBtn) {
@@ -67,10 +39,6 @@ const audioBtn = document.getElementById('audio-btn');
 const soundOnIcon = audioBtn && audioBtn.querySelector('.sound-on-icon');
 const soundOffIcon = audioBtn && audioBtn.querySelector('.sound-off-icon');
 
-let audioEl = new Audio();
-audioEl.loop = true;
-audioEl.volume = 0.35;
-
 let audioOn = false;
 
 const savedAudio = localStorage.getItem('audioOn');
@@ -87,10 +55,15 @@ if (savedAudio !== null) {
     }
 }
 
+// Wait for audio manager to be available, then start audio if needed
 if (audioOn) {
     const tryStartAudio = () => {
-        if (window.seasonManager && window.forestScene) {
-            updateAmbientAudio();
+        if (window.audioManager && window.seasonManager && window.forestScene) {
+            // Trigger seasonal audio to play
+            audioManager.updateSeasonalAudio(
+                window.seasonManager.currentSeason,
+                window.forestScene.isNight
+            );
         } else {
             setTimeout(tryStartAudio, 100);
         }
@@ -112,60 +85,57 @@ function getSeason() {
     return 'winter';
 }
 
-// Update audio based on season + day/night
+// Update audio based on season + day/night (now delegates to audioManager)
 function updateAmbientAudio() {
-    if (!audioOn) return;
+    if (!audioOn || !window.audioManager) return;
 
-    const season = window.seasonManager?.currentSeason;
-    const isNight = window.forestScene?.isNight;
-    const timeKey = isNight ? 'night' : 'day';
-
-    const src = audioMap[season]?.[timeKey];
-    if (!src) return;
-
-    const fullSrc = new URL(src, window.location.href).href;
-
-    if (audioEl.src !== fullSrc) {
-        // 🔥 FORCE proper reload
-        audioEl.pause();
-        audioEl.currentTime = 0;
-        audioEl.src = '';         // clear first (important)
-        audioEl.src = src;
-        audioEl.load();           // force reload
-        audioEl.play().catch(() => {});
-    }
+    const season = window.seasonManager?.currentSeason || getSeason();
+    const isNight = window.forestScene?.isNight || false;
+    
+    window.audioManager.updateSeasonalAudio(season, isNight);
 }
 
 // Button click
 if (audioBtn) {
     audioBtn.addEventListener('click', () => {
-    audioOn = !audioOn;
+        audioOn = !audioOn;
 
-    // 💾 SAVE STATE
-    localStorage.setItem('audioOn', JSON.stringify(audioOn));
+        // 💾 SAVE STATE
+        localStorage.setItem('audioOn', JSON.stringify(audioOn));
 
-    if (audioOn) {
-        updateAmbientAudio();
-        soundOnIcon?.classList.remove('hidden');
-        soundOffIcon?.classList.add('hidden');
-    } else {
-        audioEl.pause();
-        soundOnIcon?.classList.add('hidden');
-        soundOffIcon?.classList.remove('hidden');
-    }
+        if (audioOn) {
+            // Start audio through manager
+            if (window.audioManager) {
+                const season = window.seasonManager?.currentSeason || getSeason();
+                const isNight = window.forestScene?.isNight || false;
+                window.audioManager.toggleAudio(true);
+                window.audioManager.updateSeasonalAudio(season, isNight);
+            }
+            soundOnIcon?.classList.remove('hidden');
+            soundOffIcon?.classList.add('hidden');
+        } else {
+            // Stop audio through manager
+            if (window.audioManager) {
+                window.audioManager.toggleAudio(false);
+            }
+            soundOnIcon?.classList.add('hidden');
+            soundOffIcon?.classList.remove('hidden');
+        }
 
-    audioBtn.setAttribute(
-        'title',
-        audioOn ? 'Mute Forest Sounds' : 'Unmute Forest Sounds'
-    );
-});
+        audioBtn.setAttribute(
+            'title',
+            audioOn ? 'Mute Forest Sounds' : 'Unmute Forest Sounds'
+        );
+    });
 }
 
 // Sync when scene loads
 window.addEventListener('forestSceneReady', () => {
     // ensure correct season audio is ready
-    if (audioOn) {
-        updateAmbientAudio();
+    if (audioOn && window.audioManager) {
+        const season = window.seasonManager?.currentSeason || getSeason();
+        const isNight = window.forestScene?.isNight || false;
+        window.audioManager.updateSeasonalAudio(season, isNight);
     }
 });
 
@@ -287,10 +257,7 @@ window.addEventListener('forestSceneReady', () => {
 
     // 4. 🔥 ONLY START AUDIO AFTER EVERYTHING IS READY
     if (audioOn) {
-        requestAnimationFrame(() => {
-            creekUniforms.uTime.value = performance.now() / 1000;
-            updateAmbientAudio();
-        });
+        updateAmbientAudio();
     }
 }, { once: true });
     }

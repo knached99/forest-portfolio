@@ -48,6 +48,194 @@ function initAudioResume() {
 // Call this immediately
 initAudioResume();
 
+/* ─────────────────────────────────────────────────────────
+   AUDIO MANAGER (T055-T060): Intro, Positional Creek, Seasonal
+───────────────────────────────────────────────────────── */
+const audioManager = {
+    listener: null,
+    audioContext: null,
+    
+    // Main ambient audio element
+    ambientAudio: null,
+    ambientVolume: 0.3,
+    ambientFadeSpeed: 0.015,
+    
+    // Intro air audio
+    introAudio: null,
+    introVolume: 0.4,
+    introPlaying: false,
+    introFadeSpeed: 0.012,
+    
+    // THREE.PositionalAudio for creek
+    creekAudio: null,
+    creekMesh: null,
+    creekVolume: 0.25,
+    creekMaxDistance: 80,
+    creekRefDistance: 5,
+    
+    // Seasonal audio map
+    seasonalAudioMap: {
+        spring: { day: 'audio/day_forest.mp3', night: 'audio/night_forest.mp3' },
+        summer: { day: 'audio/day_forest.mp3', night: 'audio/night_forest.mp3' },
+        fall: { day: 'audio/fall_winter_forest.mp3', night: 'audio/night_forest.mp3' },
+        winter: { day: 'audio/fall_winter_forest.mp3', night: 'audio/winter_forest_night.mp3' }
+    },
+    
+    init(scene, camera) {
+        this.listener = new THREE.AudioListener();
+        camera.add(this.listener);
+        this.audioContext = THREE.AudioContext.getContext();
+        
+        // Setup ambient audio
+        this.ambientAudio = new THREE.Audio(this.listener);
+        this.ambientAudio.setVolume(this.ambientVolume);
+        
+        // Setup intro audio
+        this.introAudio = new THREE.Audio(this.listener);
+        this.introAudio.setVolume(this.introVolume);
+        
+        // Setup positional creek audio
+        this.creekAudio = new THREE.PositionalAudio(this.listener);
+        this.creekAudio.setVolume(this.creekVolume);
+        this.creekAudio.setMaxDistance(this.creekMaxDistance);
+        this.creekAudio.setRefDistance(this.creekRefDistance);
+        
+        // Load creek audio on init (but don't play yet)
+        this.loadAudioBuffer('audio/creek.mp3', (buffer) => {
+            if (this.creekAudio) {
+                this.creekAudio.setBuffer(buffer);
+                this.creekAudio.setLoop(true);
+            }
+        });
+        
+        // Resume audio context on interaction
+        const resume = () => {
+            if (this.audioContext.state === 'suspended') {
+                this.audioContext.resume();
+            }
+            document.removeEventListener('click', resume);
+            document.removeEventListener('keydown', resume);
+            document.removeEventListener('touchstart', resume);
+        };
+        document.addEventListener('click', resume);
+        document.addEventListener('keydown', resume);
+        document.addEventListener('touchstart', resume);
+    },
+    
+    loadAudioBuffer(url, onLoad) {
+        const loader = new THREE.AudioLoader();
+        loader.load(url, onLoad, undefined, (err) => console.warn('Audio load error:', url, err));
+    },
+    
+    attachCreekMesh(mesh) {
+        this.creekMesh = mesh;
+        if (this.creekAudio && this.creekMesh) {
+            this.creekMesh.add(this.creekAudio);
+        }
+    },
+    
+    playIntro() {
+        if (this.introPlaying) return;
+        this.introPlaying = true;
+        
+        this.loadAudioBuffer('audio/air.mp3', (buffer) => {
+            this.introAudio.setBuffer(buffer);
+            this.introAudio.setLoop(false);
+            this.introAudio.play();
+            
+            // Fade in creek audio
+            setTimeout(() => {
+                if (this.creekAudio && !this.creekAudio.isPlaying) {
+                    this.creekAudio.play();
+                }
+            }, 2000);
+        });
+    },
+    
+    updateIntroFade(deltaTime) {
+        if (!this.introPlaying) return;
+        if (!this.introAudio.isPlaying) {
+            this.introPlaying = false;
+            return;
+        }
+        
+        let vol = this.introAudio.getVolume();
+        vol -= this.introFadeSpeed * deltaTime * 60;
+        if (vol < 0) vol = 0;
+        this.introAudio.setVolume(vol);
+    },
+    
+    updateSeasonalAudio(season, isNight) {
+        const seasonAudios = this.seasonalAudioMap[season];
+        if (!seasonAudios) return;
+        
+        const audioUrl = isNight ? seasonAudios.night : seasonAudios.day;
+        
+        // If already playing the same audio, don't reload
+        if (this.ambientAudio.isPlaying && this.currentAudioUrl === audioUrl) return;
+        
+        this.currentAudioUrl = audioUrl;
+        
+        // Fade out current, then switch
+        this.loadAudioBuffer(audioUrl, (buffer) => {
+            // Smooth fade transition
+            if (this.ambientAudio.isPlaying) {
+                const fadeOutDuration = 1500; // ms
+                const startVol = this.ambientAudio.getVolume();
+                const startTime = Date.now();
+                
+                const fadeInterval = setInterval(() => {
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / fadeOutDuration, 1);
+                    this.ambientAudio.setVolume(startVol * (1 - progress));
+                    
+                    if (progress === 1) {
+                        clearInterval(fadeInterval);
+                        this.ambientAudio.stop();
+                        this.ambientAudio.setBuffer(buffer);
+                        this.ambientAudio.setLoop(true);
+                        this.ambientAudio.setVolume(this.ambientVolume);
+                        this.ambientAudio.play();
+                    }
+                }, 30);
+            } else {
+                this.ambientAudio.setBuffer(buffer);
+                this.ambientAudio.setLoop(true);
+                this.ambientAudio.setVolume(this.ambientVolume);
+                this.ambientAudio.play();
+            }
+        });
+    },
+    
+    setAmbientVolume(vol) {
+        this.ambientVolume = vol;
+        if (this.ambientAudio) this.ambientAudio.setVolume(vol);
+    },
+    
+    setCreekVolume(vol) {
+        this.creekVolume = vol;
+        if (this.creekAudio) this.creekAudio.setVolume(vol);
+    },
+    
+    toggleAudio(enabled) {
+        if (enabled) {
+            if (this.ambientAudio && !this.ambientAudio.isPlaying) {
+                this.ambientAudio.play();
+            }
+            if (this.creekAudio && !this.creekAudio.isPlaying) {
+                this.creekAudio.play();
+            }
+        } else {
+            if (this.ambientAudio && this.ambientAudio.isPlaying) {
+                this.ambientAudio.pause();
+            }
+            if (this.creekAudio && this.creekAudio.isPlaying) {
+                this.creekAudio.pause();
+            }
+        }
+    }
+};
+
 // procedural asset loader which generates textures for fireflies and snow sot they don't look just like a bunch of squares 
 // Helper to create soft circular textures without external files
 function createCircleTexture() {
@@ -276,6 +464,9 @@ document.addEventListener('visibilitychange', () => {
     const camera = new THREE.PerspectiveCamera(62, W() / H(), 0.1, 1200);
     camera.position.set(0, 130, 40);
     camera.lookAt(0, 50, 0);
+
+    // Initialize audio manager early
+    audioManager.init(scene, camera);
 
     /* ─────────────────────────────────────────────────────────
        T008: Season Configurations (expanded)
@@ -974,75 +1165,119 @@ const creekWidth   = 5.5;
 const creekUniforms = {
     uTime: { value: 0 },
     uColor: { value: new THREE.Color(SC.creekFrozen ? "#89b4ff" : "#05192d") },
-    uIsFrozen: { value: SC.creekFrozen ? 1.0 : 0.0 }
+    uIsFrozen: { value: SC.creekFrozen ? 1.0 : 0.0 },
+    uNightLerp: { value: 0 }
 };
 
 const creekMat = new THREE.ShaderMaterial({
-    uniforms: {
-        ...creekUniforms,
-        uNightLerp: { value: 0 } // Add this to your uniforms object in world.js
-    },
+    uniforms: creekUniforms,
     transparent: true,
     side: THREE.DoubleSide,
     vertexShader: `
         varying vec2 vUv;
+        varying vec3 vPos;
+        varying float vFlow;
         uniform float uTime;
+        
         void main() {
             vUv = uv;
+            vPos = position;
+            
+            // Multi-layered wave simulation for realistic water flow
+            float flow = sin(uv.y * 12.0 - uTime * 2.8) * 0.5 +
+                        sin(uv.y * 8.0 - uTime * 1.6) * 0.3 +
+                        sin(uv.y * 20.0 - uTime * 4.2) * 0.15;
+            vFlow = flow;
+            
             vec3 p = position;
-            // Fluid motion
-            p.y += sin(uv.y * 8.0 + uTime * 1.2) * 0.04;
+            // Realistic wave displacement (smaller for water realism)
+            p.y += flow * 0.06;
+            
+            // Additional ripple effect based on x position (width variation)
+            p.y += sin(uv.x * 15.0 + uTime * 0.8) * sin(uv.y * 6.0) * 0.03;
+            
             gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
         }
     `,
     fragmentShader: `
         varying vec2 vUv;
+        varying vec3 vPos;
+        varying float vFlow;
         uniform float uTime;
         uniform vec3 uColor;
         uniform float uIsFrozen;
         uniform float uNightLerp;
 
+        // Improved Perlin-like noise
+        float noise(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            float a = sin(i.x * 12.9898 + i.y * 78.233) * 43758.5453;
+            float b = sin((i.x + 1.0) * 12.9898 + i.y * 78.233) * 43758.5453;
+            float c = sin(i.x * 12.9898 + (i.y + 1.0) * 78.233) * 43758.5453;
+            float d = sin((i.x + 1.0) * 12.9898 + (i.y + 1.0) * 78.233) * 43758.5453;
+            return mix(mix(fract(a), fract(b), f.x), mix(fract(c), fract(d), f.x), f.y);
+        }
+
         void main() {
-            // 1. ANIME COLOR PALETTE
-            // Day: Bright Teal/Blue | Night: Deep Indigo/Purple
-            vec3 dayDeep   = vec3(0.0, 0.35, 0.5);
-            vec3 dayLight  = vec3(0.1, 0.75, 0.85);
-            vec3 nightDeep = vec3(0.05, 0.05, 0.2);
-            vec3 nightHue  = vec3(0.1, 0.0, 0.3); // Purple tint
+            // Color palette that responds to day/night
+            vec3 dayDeep   = vec3(0.0, 0.3, 0.45);
+            vec3 dayMid    = vec3(0.05, 0.55, 0.7);
+            vec3 dayLight  = vec3(0.15, 0.8, 0.95);
+            
+            vec3 nightDeep = vec3(0.02, 0.02, 0.15);
+            vec3 nightMid  = vec3(0.08, 0.08, 0.3);
+            vec3 nightLight = vec3(0.15, 0.15, 0.4);
 
             vec3 deep = mix(dayDeep, nightDeep, uNightLerp);
-            // Subtle night-time hue shift
-            float hueOsc = sin(uTime * 0.5) * 0.5 + 0.5;
-            vec3 light = mix(dayLight, mix(nightDeep, nightHue, hueOsc), uNightLerp);
+            vec3 mid = mix(dayMid, nightMid, uNightLerp);
+            vec3 light = mix(dayLight, nightLight, uNightLerp);
 
-            // 2. FOAM STREAKS (The "Painted" Look)
-            float speed = uTime * 1.8;
-            float lines = sin(vUv.y * 50.0 - speed) * 0.5 + 0.5;
-            float mask = sin(vUv.y * 12.0 - speed * 0.6) * sin(vUv.x * 10.0);
-            float foam = step(0.88, lines * mask);
-            
-            // 3. REALISTIC DAYTIME SHIMMER
-            // Uses a high-frequency sparkle that dies out at night
-            float shimmerNoise = sin(vUv.x * 100.0 + uTime * 3.0) * cos(vUv.y * 100.0 - uTime * 2.0);
-            float shimmer = pow(max(0.0, shimmerNoise), 15.0) * (1.0 - uNightLerp);
-
-            // Compose Base
+            // Depth-based color variation
             float centerDist = abs(vUv.x - 0.5) * 2.0;
-            vec3 baseCol = mix(deep, light, centerDist);
-            
-            // Add Foam and Shimmer
-            vec3 finalColor = mix(baseCol, vec3(1.0), foam * 0.6); // Foam
-            finalColor += shimmer * 0.8; // Sunlight glisten
+            vec3 baseColor = mix(deep, light, centerDist);
+            baseColor = mix(baseColor, mid, 0.5);
 
-            // 4. FIX BLACK LINES (Smooth Edge Alpha)
-            // We use edgeFade only for Alpha, not for lerping to black
-            float edgeFade = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
+            // Fast-moving water texture
+            float waterFlow = noise(vUv * vec2(8.0, 4.0) + uTime * vec2(3.5, 0.8));
             
+            // Multiple scales of ripples for realism
+            float ripples = sin(vUv.y * 30.0 - uTime * 3.5) * 0.3 +
+                           sin(vUv.y * 80.0 - uTime * 6.8) * 0.15 +
+                           sin(vUv.x * 25.0 + uTime * 1.2) * 0.2;
+            
+            // Foam creation (white traces following water flow)
+            float foamPattern = sin(vUv.y * 50.0 - uTime * 2.0) * 0.5 + 0.5;
+            float foamMask = sin(vUv.y * 12.0 - uTime * 2.8) * sin(vUv.x * 15.0);
+            float foam = step(0.82, foamPattern * foamMask) * (1.0 - uNightLerp);
+            
+            // Caustics-like pattern (light reflections underwater)
+            float caustics = noise(vUv * 25.0 + uTime * 0.5) * 0.3 +
+                            noise(vUv * 50.0 - uTime * 0.8) * 0.2;
+            caustics *= (1.0 - uNightLerp) * 0.8;
+            
+            // Sunlight shimmer (only visible during day)
+            float shimmer = pow(max(0.0, sin(vUv.x * 120.0 + uTime * 3.5)), 20.0) * (1.0 - uNightLerp);
+            shimmer += pow(max(0.0, sin(vUv.x * 200.0 - uTime * 2.2)), 15.0) * (1.0 - uNightLerp) * 0.5;
+            
+            // Combine all effects
+            vec3 finalColor = baseColor;
+            finalColor = mix(finalColor, light, ripples * 0.15);
+            finalColor = mix(finalColor, vec3(0.9, 0.95, 1.0), foam * 0.7);
+            finalColor += caustics * light * 0.6;
+            finalColor += shimmer * 0.5;
+            
+            // Ice effect
             if (uIsFrozen > 0.5) {
-                finalColor = mix(vec3(0.8, 0.9, 1.0), vec3(1.0), foam * 0.3);
+                finalColor = mix(vec3(0.8, 0.92, 1.0), vec3(0.95, 0.98, 1.0), centerDist);
+                finalColor += shimmer * 0.8;
             }
 
-            gl_FragColor = vec4(finalColor, 0.85 * edgeFade);
+            // Edge fade for smooth transitions
+            float edgeFade = smoothstep(0.0, 0.15, vUv.x) * smoothstep(1.0, 0.85, vUv.x);
+            
+            gl_FragColor = vec4(finalColor, 0.9 * edgeFade);
         }
     `
 });
@@ -1051,6 +1286,9 @@ const creekMat = new THREE.ShaderMaterial({
 const creekGeo = buildCreekGeometry(creekSamples, creekWidth);
 const creekMesh = new THREE.Mesh(creekGeo, creekMat);
 scene.add(creekMesh);
+
+// Attach positional audio to creek
+audioManager.attachCreekMesh(creekMesh);
 
 // 2. Ice Mesh
 const iceGeo = buildCreekGeometry(creekSamples, creekWidth * 1.05);
@@ -1495,6 +1733,9 @@ function getStoredTimeOfDay() {
     currentSeason = name;
     SC = ns;
 
+    // 🔥 Update audio for new season
+    audioManager.updateSeasonalAudio(name, isNight);
+
     // 🔥 Notify systems immediately (audio, UI, etc.)
     _seasonListeners.forEach(cb => cb(name));
 
@@ -1635,6 +1876,7 @@ function getStoredTimeOfDay() {
 }
     };
     window.seasonManager = seasonManager;
+    window.audioManager = audioManager; // Expose audio manager globally
 
     /* ─────────────────────────────────────────────────────────
        T010: Day / Night Cycle (with system pref on load)
@@ -1675,6 +1917,10 @@ function getStoredTimeOfDay() {
         nightTarget = isNight ? 1 : 0;
         nightTransitioning = true;
         document.body.classList.toggle('night-mode', isNight);
+        
+        // Update audio for day/night change
+        audioManager.updateSeasonalAudio(currentSeason, isNight);
+        
         /* Animate arc clockwise (−π) so sun/moon visibly swap positions */
         const _arc = { v: arcOffset };
         if (typeof gsap !== 'undefined') {
@@ -1727,6 +1973,9 @@ function getStoredTimeOfDay() {
     function doReveal() {
         const ls = document.getElementById('loading-screen');
         if (ls) { ls.classList.add('fade-out'); setTimeout(() => { ls.style.display = 'none'; }, 900); }
+
+        // Play intro audio (air.mp3) on reveal
+        audioManager.playIntro();
 
      //   applySystemDarkMode();
 
@@ -1816,7 +2065,11 @@ function getStoredTimeOfDay() {
        ANIMATION LOOP
     ───────────────────────────────────────────────────────── */
     function animate() {
-        const time = performance.now() * 0.001; 
+        const time = performance.now() * 0.001;
+        
+        // Update intro audio fade
+        const deltaTime = 16; // approximately 60fps
+        audioManager.updateIntroFade(deltaTime);
 
         // 2. Update the river (Check if it exists first to prevent errors)
         if (typeof creekMat !== 'undefined' && creekMat.uniforms) {
