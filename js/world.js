@@ -679,6 +679,7 @@ document.addEventListener('visibilitychange', () => {
     moonLight.position.set(-60, 90, -30);
     scene.add(moonLight);
 
+
     /* ─────────────────────────────────────────────────────────
        SKY DOME
     ───────────────────────────────────────────────────────── */
@@ -1110,6 +1111,33 @@ scene.add(ground);
         scene.add(rock);
     }
 
+
+    /* ─────────────────────────────────────────────────────────
+   ROCKS & TREES (Lower Roughness for Specular Reflection)
+───────────────────────────────────────────────────────── */
+// Change roughness from 0.95 to 0.65 for rocks, and 0.75 for trees
+// const trunkMat = new THREE.MeshStandardMaterial({ color: SC.trunkColor, roughness: 0.75 });
+//const rockMat = new THREE.MeshStandardMaterial({ color: 0x6a6a6a, roughness: 0.65 });
+
+/* ─────────────────────────────────────────────────────────
+   FIREFLY LIGHT POOLING
+───────────────────────────────────────────────────────── */
+const FIREFLY_LIGHT_COUNT = 5;
+const fireflyLights = [];
+
+for (let i = 0; i < FIREFLY_LIGHT_COUNT; i++) {
+    // Boost max distance to 25
+    const pLight = new THREE.PointLight(0xaaff66, 0, 25); 
+    pLight.decay = 2; 
+    scene.add(pLight);
+    
+    fireflyLights.push({
+        light: pLight,
+        currentIntensity: 0,
+        targetIdx: -1
+    });
+}
+
   /* ─────────────────────────────────────────────────────────
     T043–T047: REALISTIC SEASONAL CREEK (FIXED)
 ───────────────────────────────────────────────────────── */
@@ -1162,11 +1190,20 @@ const creekCurve   = new THREE.CatmullRomCurve3(creekControlPoints);
 const creekSamples = creekCurve.getPoints(150);
 const creekWidth   = 5.5;
 
+/* ─────────────────────────────────────────────────────────
+   T043–T047: REALISTIC SEASONAL CREEK (FIXED)
+───────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────
+   T043–T047: REALISTIC SEASONAL CREEK (FIXED)
+───────────────────────────────────────────────────────── */
 const creekUniforms = {
     uTime: { value: 0 },
     uColor: { value: new THREE.Color(SC.creekFrozen ? "#89b4ff" : "#05192d") },
     uIsFrozen: { value: SC.creekFrozen ? 1.0 : 0.0 },
-    uNightLerp: { value: 0 }
+    uNightLerp: { value: 0 },
+    // NEW: Inject firefly positions and overall intensity
+    uFireflyPositions: { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] },
+    uFireflyIntensity: { value: 0.0 }
 };
 
 const creekMat = new THREE.ShaderMaterial({
@@ -1181,22 +1218,18 @@ const creekMat = new THREE.ShaderMaterial({
         
         void main() {
             vUv = uv;
-            vPos = position;
+            vPos = (modelMatrix * vec4(position, 1.0)).xyz; // Convert to world position for accurate light math
             
-            // Multi-layered wave simulation for realistic water flow
             float flow = sin(uv.y * 12.0 - uTime * 2.8) * 0.5 +
                         sin(uv.y * 8.0 - uTime * 1.6) * 0.3 +
                         sin(uv.y * 20.0 - uTime * 4.2) * 0.15;
             vFlow = flow;
             
             vec3 p = position;
-            // Realistic wave displacement (smaller for water realism)
             p.y += flow * 0.06;
-            
-            // Additional ripple effect based on x position (width variation)
             p.y += sin(uv.x * 15.0 + uTime * 0.8) * sin(uv.y * 6.0) * 0.03;
             
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+            gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(p, 1.0);
         }
     `,
     fragmentShader: `
@@ -1207,8 +1240,11 @@ const creekMat = new THREE.ShaderMaterial({
         uniform vec3 uColor;
         uniform float uIsFrozen;
         uniform float uNightLerp;
+        
+        // NEW: Firefly Uniforms
+        uniform vec3 uFireflyPositions[5];
+        uniform float uFireflyIntensity;
 
-        // Improved Perlin-like noise
         float noise(vec2 p) {
             vec2 i = floor(p);
             vec2 f = fract(p);
@@ -1221,7 +1257,6 @@ const creekMat = new THREE.ShaderMaterial({
         }
 
         void main() {
-            // Color palette that responds to day/night
             vec3 dayDeep   = vec3(0.0, 0.3, 0.45);
             vec3 dayMid    = vec3(0.05, 0.55, 0.7);
             vec3 dayLight  = vec3(0.15, 0.8, 0.95);
@@ -1234,49 +1269,67 @@ const creekMat = new THREE.ShaderMaterial({
             vec3 mid = mix(dayMid, nightMid, uNightLerp);
             vec3 light = mix(dayLight, nightLight, uNightLerp);
 
-            // Depth-based color variation
             float centerDist = abs(vUv.x - 0.5) * 2.0;
             vec3 baseColor = mix(deep, light, centerDist);
             baseColor = mix(baseColor, mid, 0.5);
 
-            // Fast-moving water texture
             float waterFlow = noise(vUv * vec2(8.0, 4.0) + uTime * vec2(3.5, 0.8));
+            float ripples = sin(vUv.y * 30.0 - uTime * 3.5) * 0.3 + sin(vUv.y * 80.0 - uTime * 6.8) * 0.15 + sin(vUv.x * 25.0 + uTime * 1.2) * 0.2;
             
-            // Multiple scales of ripples for realism
-            float ripples = sin(vUv.y * 30.0 - uTime * 3.5) * 0.3 +
-                           sin(vUv.y * 80.0 - uTime * 6.8) * 0.15 +
-                           sin(vUv.x * 25.0 + uTime * 1.2) * 0.2;
-            
-            // Foam creation (white traces following water flow)
             float foamPattern = sin(vUv.y * 50.0 - uTime * 2.0) * 0.5 + 0.5;
             float foamMask = sin(vUv.y * 12.0 - uTime * 2.8) * sin(vUv.x * 15.0);
             float foam = step(0.82, foamPattern * foamMask) * (1.0 - uNightLerp);
             
-            // Caustics-like pattern (light reflections underwater)
-            float caustics = noise(vUv * 25.0 + uTime * 0.5) * 0.3 +
-                            noise(vUv * 50.0 - uTime * 0.8) * 0.2;
+            float caustics = noise(vUv * 25.0 + uTime * 0.5) * 0.3 + noise(vUv * 50.0 - uTime * 0.8) * 0.2;
             caustics *= (1.0 - uNightLerp) * 0.8;
             
-            // Sunlight shimmer (only visible during day)
             float shimmer = pow(max(0.0, sin(vUv.x * 120.0 + uTime * 3.5)), 20.0) * (1.0 - uNightLerp);
             shimmer += pow(max(0.0, sin(vUv.x * 200.0 - uTime * 2.2)), 15.0) * (1.0 - uNightLerp) * 0.5;
             
-            // Combine all effects
             vec3 finalColor = baseColor;
             finalColor = mix(finalColor, light, ripples * 0.15);
             finalColor = mix(finalColor, vec3(0.9, 0.95, 1.0), foam * 0.7);
             finalColor += caustics * light * 0.6;
             finalColor += shimmer * 0.5;
             
-            // Ice effect
+            // --- NEW: FIREFLY SPECULAR & DIFFUSE REFLECTION ---
+            vec3 fireflyGlow = vec3(0.0);
+            if (uFireflyIntensity > 0.0) {
+                // Approximate a normal map based on the water flow
+                vec3 normal = normalize(vec3(0.0, 1.0, 0.0) + vec3(0.0, vFlow * 0.5, 0.0));
+                vec3 viewDir = normalize(cameraPosition - vPos);
+
+                for(int i = 0; i < 5; i++) {
+                    vec3 lightPos = uFireflyPositions[i];
+                    float dist = distance(vPos, lightPos);
+                    
+                    // Smooth, physical falloff
+                    float attenuation = clamp(1.0 - (dist / 20.0), 0.0, 1.0);
+                    attenuation *= attenuation; 
+                    
+                    if (attenuation > 0.0) {
+                        vec3 lightDir = normalize(lightPos - vPos);
+                        vec3 halfVector = normalize(lightDir + viewDir);
+                        
+                        // Specular highlight (the shiny reflection)
+                        float specIntensity = pow(max(dot(normal, halfVector), 0.0), 60.0);
+                        
+                        // Add yellowish-green glow + bright specular glints
+                        fireflyGlow += (vec3(0.5, 1.0, 0.2) * attenuation * uFireflyIntensity * 0.3) + 
+                                       (vec3(0.8, 1.0, 0.5) * specIntensity * attenuation * uFireflyIntensity * 1.5);
+                    }
+                }
+            }
+            finalColor += fireflyGlow;
+            // ---------------------------------------------------
+
             if (uIsFrozen > 0.5) {
                 finalColor = mix(vec3(0.8, 0.92, 1.0), vec3(0.95, 0.98, 1.0), centerDist);
                 finalColor += shimmer * 0.8;
+                finalColor += fireflyGlow * 1.5; // Ice is more reflective
             }
 
-            // Edge fade for smooth transitions
             float edgeFade = smoothstep(0.0, 0.15, vUv.x) * smoothstep(1.0, 0.85, vUv.x);
-            
             gl_FragColor = vec4(finalColor, 0.9 * edgeFade);
         }
     `
@@ -1604,6 +1657,26 @@ iceMesh.visible = SC.creekFrozen;
 });
     const fireflies = new THREE.Points(ffGeo, ffMat);
     scene.add(fireflies);
+
+
+    /* ─────────────────────────────────────────────────────────
+    FIREFLY LIGHT POOLING (Option B)
+───────────────────────────────────────────────────────── */
+// const FIREFLY_LIGHT_COUNT = 5;
+// const fireflyLights = [];
+
+// for (let i = 0; i < FIREFLY_LIGHT_COUNT; i++) {
+//     // 0 intensity by default; will fade in at night
+//     const pLight = new THREE.PointLight(0x88ff44, 0, 15); 
+//     pLight.decay = 2; 
+//     scene.add(pLight);
+    
+//     fireflyLights.push({
+//         light: pLight,
+//         currentIntensity: 0,
+//         targetIdx: -1
+//     });
+// }
 
     /* ─────────────────────────────────────────────────────────
        STATE
@@ -2068,19 +2141,14 @@ function getStoredTimeOfDay() {
         const time = performance.now() * 0.001;
         
         // Update intro audio fade
-        const deltaTime = 16; // approximately 60fps
+        const deltaTime = 16; 
         audioManager.updateIntroFade(deltaTime);
 
-        // 2. Update the river (Check if it exists first to prevent errors)
         if (typeof creekMat !== 'undefined' && creekMat.uniforms) {
             creekMat.uniforms.uTime.value = time;
         }
 
         requestAnimationFrame(animate);
-        renderer.render(scene, camera);
-        // time += 0.016;
-        // const time = performance.now() * 0.001; 
-        // if (creekMat) creekMat.uniforms.uTime.value = time;
 
         /* — Scroll-driven camera — */
         if (introDone) {
@@ -2111,27 +2179,66 @@ function getStoredTimeOfDay() {
         scene.fog.color.copy(fc);
         if (!introDone || camera.position.y <= 48) renderer.setClearColor(fc, 1);
 
-        /* Sun/moon visibility is set in the arc section below */
         renderer.toneMappingExposure = THREE.MathUtils.lerp(1.1, 0.6, nl);
-
-        /* T039: Star field opacity */
         starMat.opacity = Math.max(nl - 0.2, 0) * 1.3;
 
-        /* Moon/sun arc is handled further below, after star field */
-
-        /* — Fireflies — */
+        /* — Fireflies Movement & Light Pooling — */
+        /* — Fireflies Movement & Light Pooling — */
         ffMat.opacity = Math.max(nl - 0.15, 0) * 1.1;
         if (nl > 0.1) {
             const fa = ffGeo.attributes.position.array;
+            const priorities = []; 
+
             for (let i = 0; i < FF_COUNT; i++) {
                 const d  = ffData[i];
                 const t2 = time * d.sp + d.ph;
-                fa[i*3]     = d.bx + Math.sin(t2) * d.r;
-                fa[i*3 + 1] = d.by + Math.sin(t2 * 1.6) * 0.8;
-                fa[i*3 + 2] = d.bz + Math.cos(t2 * 0.75) * d.r;
+                const nx = d.bx + Math.sin(t2) * d.r;
+                const ny = d.by + Math.sin(t2 * 1.6) * 0.8;
+                const nz = d.bz + Math.cos(t2 * 0.75) * d.r;
+
+                fa[i*3]     = nx;
+                fa[i*3 + 1] = ny;
+                fa[i*3 + 2] = nz;
+
+                const dx = nx - camera.position.x;
+                const dy = ny - camera.position.y;
+                const dz = nz - camera.position.z;
+                priorities.push({ idx: i, distSq: dx*dx + dy*dy + dz*dz, x: nx, y: ny, z: nz });
             }
             ffGeo.attributes.position.needsUpdate = true;
             ffMat.size = 0.3 + (Math.sin(time * 1.8) * 0.5 + 0.5) * 0.25 * nl;
+
+            priorities.sort((a, b) => a.distSq - b.distSq);
+
+            fireflyLights.forEach((pool, i) => {
+                const target = priorities[i];
+                pool.light.position.lerp(_ca.set(target.x, target.y, target.z), 0.1);
+                
+                // BOOST INTENSITY to 30.0 for realistic reach
+                pool.currentIntensity = THREE.MathUtils.lerp(pool.currentIntensity, 30.0 * nl, 0.05);
+                pool.light.intensity = pool.currentIntensity;
+                
+                // Pass position to the creek shader
+                if (typeof creekMat !== 'undefined' && creekMat.uniforms.uFireflyPositions) {
+                    creekMat.uniforms.uFireflyPositions.value[i].copy(pool.light.position);
+                }
+            });
+            
+            // Pass overall intensity state to creek
+            if (typeof creekMat !== 'undefined' && creekMat.uniforms.uFireflyIntensity) {
+                // Normalize it for the shader (0.0 to 1.0 range based on our max 30)
+                creekMat.uniforms.uFireflyIntensity.value = fireflyLights[0].currentIntensity / 30.0;
+            }
+            
+        } else {
+            // Turn off firefly lights during the day
+            fireflyLights.forEach(pool => {
+                pool.currentIntensity = THREE.MathUtils.lerp(pool.currentIntensity, 0, 0.1);
+                pool.light.intensity = pool.currentIntensity;
+            });
+            if (typeof creekMat !== 'undefined' && creekMat.uniforms.uFireflyIntensity) {
+                creekMat.uniforms.uFireflyIntensity.value = 0;
+            }
         }
 
         /* T037: Grass uniforms */
@@ -2139,52 +2246,34 @@ function getStoredTimeOfDay() {
         grassUniforms.uWindStrength.value = REDUCED_MOTION ? 0.01 : 0.35;
         grassOutlineMat.uniforms.uTime.value = time;
 
-
         /* — Seasonal assets (Leaves/Petals/Snow) — */
         if (leafAssetMat.opacity > 0.01) {
             const isWinter = currentSeason === 'winter';
-            
             for (let i = 0; i < PART_MAX; i++) {
                 const d = leafData[i];
-
-                // 1. Update Physics
-                // Add a slight horizontal "drift" based on time to simulate wind
                 const drift = Math.sin(time + i) * (isWinter ? 0.01 : 0.03);
                 d.x += d.vx + drift;
                 d.y += d.vy;
                 d.z += d.vz;
 
-                // 2. Advanced Organic Rotation (The "Tumble")
-                if (isWinter) {
-                    // Snow doesn't flip, it just wobbles
-                    d.rotZ += d.spin * 0.2;
-                } else {
-                    // Leaves and Petals flip and spin on all axes
-                    d.rotX += d.spin;
-                    d.rotY += d.spin * 0.8;
-                    d.rotZ += d.spin * 0.5;
-                }
+                if (isWinter) d.rotZ += d.spin * 0.2;
+                else { d.rotX += d.spin; d.rotY += d.spin * 0.8; d.rotZ += d.spin * 0.5; }
 
-                // 3. Reset if they hit the ground
                 if (d.y < -3) {
                     d.x = camera.position.x + (Math.random() - 0.5) * 60;
                     d.y = camera.position.y + 18 + Math.random() * 8;
                     d.z = camera.position.z + (Math.random() - 0.5) * 60;
                 }
-
-                // 4. Apply to Matrix
                 leafDummy.position.set(d.x, d.y, d.z);
-                
-                // We add a tiny bit of random scale per leaf for realism
                 const s = 1.0 + Math.sin(i) * 0.2; 
                 leafDummy.scale.set(s, s, s);
-                
                 leafDummy.rotation.set(d.rotX, d.rotY, d.rotZ);
                 leafDummy.updateMatrix();
                 leafMesh.setMatrixAt(i, leafDummy.matrix);
             }
             leafMesh.instanceMatrix.needsUpdate = true;
         }
+
         /* — Rain — */
         if (rainMat.opacity > 0.01) {
             const ra = rainGeo.attributes.position.array;
@@ -2201,11 +2290,10 @@ function getStoredTimeOfDay() {
         }
 
         /* T047: Creek time */
-       if (typeof creekMat !== 'undefined' && creekMat.uniforms) {
-        creekMat.uniforms.uTime.value = time;
-        // This connects the day/night transition to the water shimmer
-        creekMat.uniforms.uNightLerp.value = nightLerp; 
-    }
+        if (typeof creekMat !== 'undefined' && creekMat.uniforms) {
+            creekMat.uniforms.uTime.value = time;
+            creekMat.uniforms.uNightLerp.value = nightLerp; 
+        }
 
         /* — Clouds drift — */
         for (let i = 0; i < cloudGroup.children.length; i++) {
@@ -2223,23 +2311,19 @@ function getStoredTimeOfDay() {
             tr.rotation.x = Math.cos(time * 0.35 + i * 0.38) * sw * 0.4;
         }
 
-        /* — Sun arc — sweeps across the sky in front of the camera —
-           Horizontal arc in XY-plane at fixed Z = -320 (always ahead of camera).
-           One full cycle every ~785 s at speed 0.008; well within camera frustum. */
+        /* — Sun/Moon arc — */
         const sa   = time * 0.008 + arcOffset;
-        const sunX = Math.cos(sa) * 80;           /* left–right sweep ±80  */
-        const sunY = 48 + Math.sin(sa) * 65;      /* rises 113 → sets -17  */
+        const sunX = Math.cos(sa) * 80;
+        const sunY = 48 + Math.sin(sa) * 65;
         const sunZ = -280;
         sunMesh.position.set(sunX, sunY, sunZ);
         sunGlowMesh.position.copy(sunMesh.position);
         sunLight.position.set(sunX, sunY, sunZ);
 
-        /* Hide sun below horizon or in night mode */
         const sunAbove = sunY > -10;
         sunMesh.visible      = nl < 0.6  && sunAbove;
         sunGlowMesh.visible  = nl < 0.55 && sunAbove;
 
-        /* — Moon arc — offset by π so it rises when sun sets — */
         const moonX = Math.cos(sa + Math.PI) * 80;
         const moonY = 48 + Math.sin(sa + Math.PI) * 65;
         moonMesh.position.set(moonX, moonY, sunZ);
@@ -2250,7 +2334,7 @@ function getStoredTimeOfDay() {
         moonMesh.visible     = nl > 0.25 && moonAbove;
         moonGlowMesh.visible = nl > 0.20 && moonAbove;
 
-        /* — Aurora Borealis — visible only in Winter night — */
+        /* — Aurora — */
         if (currentSeason === 'winter' && nl > 0.25) {
             auroraMesh.visible = true;
             auroraUniforms.uTime.value      = time;
