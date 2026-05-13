@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title id="project-title">Project</title>
+
+  <link rel="stylesheet" href="../css/tailwind.css" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/projects.css" />
+</head>
+
+<body>
+
+<main class="project-page">
+
+  <a href="../index.html#projects" class="project-back">
+    <span class="project-back-icon">←</span>
+    <span>Back to Projects</span>
+  </a>
+
+  <!-- HERO -->
+  <section class="project-hero">
+
+    <div class="project-media" id="project-media">
+      <!-- image injected here -->
+    </div>
+
+    <div class="project-content">
+
+      <div class="project-label" id="project-label"></div>
+
+      <h1 class="project-title" id="project-name"></h1>
+
+      <p class="project-description" id="project-description"></p>
+
+      <div class="project-stack" id="project-stack"></div>
+
+    </div>
+
+  </section>
+
+  <!-- GRID -->
+  <section class="project-grid">
+
+    <div class="project-card">
+      <h2>Key Features</h2>
+      <ul class="project-features" id="project-features"></ul>
+    </div>
+
+    <div class="project-card">
+      <h2>Overview</h2>
+      <ul class="project-features" id="project-overview"></ul>
+    </div>
+
+  </section>
+
+</main>
+
+<script src="../js/project-data.js"></script>
+<script src="../js/project-render.js"></script>
+
+</body>
+</html>
