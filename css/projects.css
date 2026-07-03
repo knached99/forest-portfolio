@@ -1,321 +1,387 @@
- body {
-            min-height: 100vh;
-            background:
-                radial-gradient(circle at top left,
-                rgba(255,255,255,0.06),
-                transparent 40%),
-                #060606;
+/* =========================================================
+   SEASON SYSTEM BASE VARIABLES
+========================================================= */
 
-            color: white;
-        }
+:root {
+    --season-primary: #ffffff;
+    --season-glow: rgba(255,255,255,0.25);
+    --season-accent: rgba(255,255,255,0.08);
+    --tree-front: transparent;
+    --tree-back: transparent;
+    --bg-pattern-front: none;
+    --bg-pattern-back: none;
+}
 
-        .project-page {
-            width: min(1300px, 92%);
-            margin: 5rem auto;
-        }
+/* =========================================================
+   BASE LAYOUT & BACKGROUND SYSTEM
+========================================================= */
 
-        .project-hero {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 3rem;
-            align-items: center;
-            margin-bottom: 5rem;
-        }
+body {
+    position: relative;
+    min-height: 100vh;
+}
 
-        @media (max-width: 900px) {
-            .project-hero {
-                grid-template-columns: 1fr;
-            }
-        }
+/* 2D Seasonal Forest Background - Back Layer */
+body::before {
+    content: "";
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 35vh;
+    background-image: var(--bg-pattern-back);
+    background-size: 150px 100%;
+    background-position: 0 100%, 75px 100%;
+    background-repeat: repeat-x;
+    
+    /* Fixed Z-Index: Pulls it in front of the body background but behind content */
+    z-index: 1; 
+    opacity: 0.6;
+    pointer-events: none;
+    transition: background-image 0.8s ease, opacity 0.8s ease;
+}
 
-     .project-media {
+/* 2D Seasonal Forest Background - Front Layer */
+body::after {
+    content: "";
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 25vh;
+    background-image: var(--bg-pattern-front);
+    background-size: 120px 100%;
+    background-position: 20px 100%, 80px 100%;
+    background-repeat: repeat-x;
+    
+    /* Fixed Z-Index: Sits slightly in front of the back layer */
+    z-index: 2; 
+    opacity: 0.9;
+    pointer-events: none;
+    transition: background-image 0.8s ease, opacity 0.8s ease;
+}
+
+/* =========================================================
+   SEASON THEMES 
+========================================================= */
+
+body.season-spring {
+    --season-primary: #7CFFB2;
+    --season-glow: rgba(124,255,178,0.25);
+    --season-accent: rgba(124,255,178,0.10);
+    
+    /* Spring: light green trees / soft foliage */
+    --tree-front: rgba(163, 230, 181, 0.4);
+    --tree-back: rgba(124, 255, 178, 0.2);
+    --bg-pattern-front: radial-gradient(ellipse at 50% 100%, var(--tree-front) 60%, transparent 61%), radial-gradient(ellipse at 50% 100%, var(--tree-front) 60%, transparent 61%);
+    --bg-pattern-back: radial-gradient(ellipse at 50% 100%, var(--tree-back) 60%, transparent 61%), radial-gradient(ellipse at 50% 100%, var(--tree-back) 60%, transparent 61%);
+}
+
+body.season-summer {
+    --season-primary: #FFD36E;
+    --season-glow: rgba(255,211,110,0.25);
+    --season-accent: rgba(255,211,110,0.10);
+    
+    /* Summer: dense dark green forest */
+    --tree-front: rgba(27, 69, 32, 0.6);
+    --tree-back: rgba(15, 46, 19, 0.4);
+    --bg-pattern-front: radial-gradient(ellipse at 50% 100%, var(--tree-front) 60%, transparent 61%), radial-gradient(ellipse at 50% 100%, var(--tree-front) 60%, transparent 61%);
+    --bg-pattern-back: radial-gradient(ellipse at 50% 100%, var(--tree-back) 60%, transparent 61%), radial-gradient(ellipse at 50% 100%, var(--tree-back) 60%, transparent 61%);
+}
+
+body.season-fall {
+    --season-primary: #FF8A4C;
+    --season-glow: rgba(255,138,76,0.25);
+    --season-accent: rgba(255,138,76,0.10);
+    
+    /* Fall: orange/red/yellow foliage */
+    --tree-front: rgba(209, 86, 21, 0.5);
+    --tree-back: rgba(156, 60, 8, 0.3);
+    --bg-pattern-front: radial-gradient(ellipse at 50% 100%, var(--tree-front) 60%, transparent 61%), radial-gradient(ellipse at 50% 100%, var(--tree-front) 60%, transparent 61%);
+    --bg-pattern-back: radial-gradient(ellipse at 50% 100%, var(--tree-back) 60%, transparent 61%), radial-gradient(ellipse at 50% 100%, var(--tree-back) 60%, transparent 61%);
+}
+
+body.season-winter {
+    --season-primary: #7FD6FF;
+    --season-glow: rgba(127,214,255,0.25);
+    --season-accent: rgba(127,214,255,0.10);
+    
+    /* Winter: snow-like stylized trees (pine triangles) */
+    --tree-front: rgba(224, 244, 255, 0.6);
+    --tree-back: rgba(127, 214, 255, 0.3);
+    --bg-pattern-front: conic-gradient(from 330deg at 50% 100%, var(--tree-front) 0 60deg, transparent 61deg), conic-gradient(from 330deg at 50% 100%, var(--tree-front) 0 60deg, transparent 61deg);
+    --bg-pattern-back: conic-gradient(from 335deg at 50% 100%, var(--tree-back) 0 50deg, transparent 51deg), conic-gradient(from 335deg at 50% 100%, var(--tree-back) 0 50deg, transparent 51deg);
+}
+
+/* =========================================================
+   PAGE WRAPPER
+========================================================= */
+
+.project-page {
+    width: min(1300px, 92%);
+    margin: 5rem auto;
+    
+    /* Ensure content remains above the 2D background trees */
+    position: relative;
+    z-index: 10; 
+}
+
+/* =========================================================
+   HERO LAYOUT
+========================================================= */
+
+.project-hero {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    align-items: center;
+    margin-bottom: 5rem;
+}
+
+@media (max-width: 900px) {
+    .project-hero {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* =========================================================
+   MEDIA (FIXED COVER FULL BOX)
+========================================================= */
+
+.project-media {
     position: relative;
     overflow: hidden;
     border-radius: 28px;
-    border: 1px solid rgba(255,255,255,0.08);
+    border: 1px solid var(--season-accent);
     background: rgba(255,255,255,0.03);
-
-    height: 500px; /* change from min-height → fixed height */
+    height: 500px;
 }
 
 .project-media img,
 .project-media video {
     position: absolute;
     inset: 0;
-
     width: 100%;
     height: 100%;
-
     object-fit: cover;
     display: block;
 }
 
-        .project-content {
-            display: flex;
-            flex-direction: column;
-            gap: 1.5rem;
-        }
+/* =========================================================
+   CONTENT
+========================================================= */
 
-        .project-label {
-            text-transform: uppercase;
-            letter-spacing: 0.22em;
-            font-size: 0.7rem;
-            color: rgba(255,255,255,0.55);
-        }
-
-        .project-title {
-            font-size: clamp(3rem, 7vw, 6rem);
-            line-height: 0.95;
-            font-weight: 700;
-            font-family: "Playfair Display", serif;
-        }
-
-        .project-title em {
-            color: var(--accent);
-            font-style: italic;
-        }
-
-        .project-description {
-            font-size: 1.05rem;
-            line-height: 1.9;
-            color: rgba(255,255,255,0.72);
-            max-width: 680px;
-        }
-
-        .project-stack {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.7rem;
-        }
-
-        .project-stack span {
-            border: 1px solid rgba(255,255,255,0.08);
-            padding: 0.55rem 1rem;
-            border-radius: 999px;
-            background: rgba(255,255,255,0.03);
-
-            font-size: 0.72rem;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-
-            color: rgba(255,255,255,0.72);
-        }
-
-        .project-actions {
-            display: flex;
-            gap: 1rem;
-            flex-wrap: wrap;
-            margin-top: 1rem;
-        }
-
-        .project-button {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-
-            padding: 1rem 1.5rem;
-
-            border-radius: 14px;
-
-            text-decoration: none;
-
-            font-size: 0.85rem;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-
-            transition: 0.3s ease;
-        }
-
-        .project-button--primary {
-            background: white;
-            color: black;
-        }
-
-        .project-button--primary:hover {
-            transform: translateY(-3px);
-        }
-
-        .project-button--secondary {
-            border: 1px solid rgba(255,255,255,0.12);
-            color: white;
-            background: rgba(255,255,255,0.03);
-        }
-
-        .project-button--secondary:hover {
-            background: rgba(255,255,255,0.08);
-        }
-
-        .project-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 2rem;
-        }
-
-        @media (max-width: 900px) {
-            .project-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .project-card {
-            padding: 2rem;
-            border-radius: 24px;
-
-            background: rgba(255,255,255,0.03);
-
-            border: 1px solid rgba(255,255,255,0.08);
-
-            backdrop-filter: blur(20px);
-        }
-
-        .project-card h2 {
-            font-size: 1.5rem;
-            margin-bottom: 1.5rem;
-            font-family: "Playfair Display", serif;
-        }
-
-        .project-features {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-
-        .project-features li {
-            padding: 1rem 0;
-            border-bottom: 1px solid rgba(255,255,255,0.08);
-
-            color: rgba(255,255,255,0.72);
-
-            line-height: 1.7;
-        }
-
-        .project-features li:last-child {
-            border-bottom: none;
-        }
-
-        .project-back {
-            display: inline-flex;
-            margin-bottom: 2rem;
-
-            color: rgba(255,255,255,0.6);
-
-            text-decoration: none;
-
-            transition: 0.3s ease;
-        }
-
-        .project-back:hover {
-            color: white;
-        }
-
-
-/* ─────────────────────────────────────────
-   BACK BUTTON
-───────────────────────────────────────── */
-
-.project-back {
-    --season-primary: #ffffff;
-    --season-secondary: rgba(255,255,255,0.08);
-
-    position: relative;
-
-    display: inline-flex;
-    align-items: center;
-    gap: 0.8rem;
-
-    width: fit-content;
-
-    padding: 0.9rem 1.4rem;
-
-    border-radius: 18px;
-
-    border: 1px solid rgba(255,255,255,0.08);
-
-    background:
-        linear-gradient(
-            135deg,
-            var(--season-secondary),
-            rgba(255,255,255,0.02)
-        );
-
-    backdrop-filter: blur(18px);
-
-    color: white;
-    text-decoration: none;
-
-    font-size: 0.82rem;
-    font-weight: 600;
-
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-
-    overflow: hidden;
-
-    transition:
-        transform 0.35s ease,
-        border-color 0.35s ease,
-        box-shadow 0.35s ease,
-        background 0.35s ease;
+.project-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
 }
 
-/* GLOW */
+.project-label {
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.55);
+}
 
-.project-back::before {
+.project-title {
+    font-size: clamp(3rem, 7vw, 6rem);
+    line-height: 0.95;
+    font-weight: 700;
+    font-family: "Playfair Display", serif;
+}
+
+.project-title em {
+    color: var(--season-primary);
+    font-style: italic;
+}
+
+.project-description {
+    font-size: 1.05rem;
+    line-height: 1.9;
+    color: rgba(255,255,255,0.72);
+    max-width: 680px;
+}
+
+/* =========================================================
+   STACK TAGS
+========================================================= */
+
+.project-stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.7rem;
+}
+
+.project-stack span {
+    border: 1px solid var(--season-accent);
+    padding: 0.55rem 1rem;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.03);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.72);
+}
+
+/* =========================================================
+   PROJECT ACTIONS & BUTTONS
+========================================================= */
+
+.project-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.project-button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.8rem;
+    width: fit-content;
+    padding: 0.9rem 1.8rem;
+    border-radius: 18px;
+    border: 1px solid var(--season-accent);
+    background: linear-gradient(135deg, rgb(9, 121, 226), rgb(122, 107, 212));
+    backdrop-filter: blur(18px);
+    color: white;
+    text-decoration: none;
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    overflow: hidden;
+    transition: transform 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease, background 0.35s ease;
+}
+
+.project-button::before {
     content: "";
-
     position: absolute;
     inset: 0;
-
-    background:
-        linear-gradient(
-            135deg,
-            transparent,
-            rgba(255,255,255,0.08),
-            transparent
-        );
-
+    background: linear-gradient(135deg, transparent, var(--season-glow), transparent);
     transform: translateX(-100%);
     transition: transform 0.8s ease;
 }
 
-/* ICON */
+.project-button:hover {
+    transform: translateY(-4px);
+    border-color: var(--season-primary);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35), 0 0 30px var(--season-glow);
+}
 
+.project-button:hover::before {
+    transform: translateX(100%);
+}
+
+/* =========================================================
+   GRID SECTION
+========================================================= */
+
+.project-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2rem;
+}
+
+@media (max-width: 900px) {
+    .project-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* =========================================================
+   CARDS
+========================================================= */
+
+.project-card {
+    padding: 2rem;
+    border-radius: 24px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--season-accent);
+    backdrop-filter: blur(20px);
+}
+
+.project-card h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+    font-family: "Playfair Display", serif;
+}
+
+.project-features {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.project-features li {
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--season-accent);
+    color: rgba(255,255,255,0.72);
+    line-height: 1.7;
+}
+
+.project-features li:last-child {
+    border-bottom: none;
+}
+
+/* =========================================================
+   BACK BUTTON (SEASON AWARE)
+========================================================= */
+
+.project-back {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.8rem;
+    width: fit-content;
+    padding: 0.9rem 1.4rem;
+    border-radius: 18px;
+    border: 1px solid var(--season-accent);
+    background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    backdrop-filter: blur(18px);
+    color: white;
+    text-decoration: none;
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    overflow: hidden;
+    transition: transform 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease, background 0.35s ease;
+}
+
+/* glow sweep */
+.project-back::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, transparent, var(--season-glow), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.8s ease;
+}
+
+/* icon */
 .project-back-icon {
     width: 36px;
     height: 36px;
-
     border-radius: 12px;
-
     display: flex;
     align-items: center;
     justify-content: center;
-
     background: var(--season-primary);
-
     color: black;
-
     font-size: 1rem;
     font-weight: bold;
-
-    transition:
-        transform 0.35s ease,
-        background 0.35s ease;
+    transition: transform 0.35s ease, background 0.35s ease;
 }
 
-/* HOVER */
-
+/* hover */
 .project-back:hover {
     transform: translateY(-4px);
-
     border-color: var(--season-primary);
-
-    box-shadow:
-        0 12px 40px rgba(0,0,0,0.35),
-        0 0 30px color-mix(
-            in srgb,
-            var(--season-primary) 22%,
-            transparent
-        );
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35), 0 0 30px var(--season-glow);
 }
 
 .project-back:hover::before {

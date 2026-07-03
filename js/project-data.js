@@ -3,6 +3,7 @@ const projects = {
     title: "Ali Academy",
     label: "Education Platform",
     image: "../images/ali_academy_landing.png",
+    link: "https://aliacademyct.com",
     description:
       "A modern educational and learning platform developed for Ali Academy to provide students with accessible online education and course management. The platform supports interactive learning experiences, streamlined content delivery, and efficient administration for instructors and learners.",
     stack: ["PHP / Laravel", "Livewire", "JavaScript", "HTML", "CSS", "MySQL"],
